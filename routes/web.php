@@ -3,6 +3,7 @@
 #by galih
 
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\FaceAttendanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ExportController;
@@ -32,6 +33,10 @@ Route::prefix('siswa')->name('student.portal.')->group(function () {
     Route::middleware(StudentPortalMiddleware::class)->group(function () {
         Route::get('/kartu', [StudentPortalController::class, 'card'])->name('card');
         Route::get('/kartu/pdf', [StudentPortalController::class, 'pdf'])->middleware('throttle:5,1')->name('pdf');
+        Route::get('/scan-wajah', [FaceAttendanceController::class, 'studentScanner'])->name('face');
+        Route::post('/scan-wajah/absen', [FaceAttendanceController::class, 'recordStudent'])->middleware('throttle:20,1')->name('face.attendance');
+        Route::post('/scan-wajah/registrasi', [FaceAttendanceController::class, 'registerStudent'])->middleware('throttle:5,1')->name('face.register');
+        Route::delete('/scan-wajah/registrasi', [FaceAttendanceController::class, 'deleteStudentRegistration'])->name('face.delete');
         Route::get('/pin', [StudentPortalController::class, 'editPin'])->name('pin.edit');
         Route::post('/pin', [StudentPortalController::class, 'updatePin'])->middleware('throttle:5,1')->name('pin.update');
         Route::post('/logout', [StudentPortalController::class, 'destroy'])->name('logout');
@@ -46,6 +51,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/proses_absen', [AttendanceController::class, 'save'])->name('attendance.save');
     Route::get('/scan-qr', [AttendanceController::class, 'scanner'])->name('attendance.scan');
     Route::post('/scan-qr', [AttendanceController::class, 'scan'])->middleware('throttle:60,1')->name('attendance.scan.record');
+    Route::get('/scan-wajah', [FaceAttendanceController::class, 'scanner'])->name('face.scan');
+    Route::post('/scan-wajah', [FaceAttendanceController::class, 'record'])->middleware('throttle:20,1')->name('face.attendance.record');
     Route::post('/delete_all', [AttendanceController::class, 'delete'])->middleware('role:admin,kesiswaan')->name('attendance.delete');
     Route::get('/cetak_absensi', [ExportController::class, 'printForm'])->name('attendance.print');
     Route::get('/export_a4', [ExportController::class, 'print'])->middleware('throttle:5,1')->name('attendance.print.download');
@@ -77,6 +84,9 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/data_siswa/{student}/wajah', [FaceAttendanceController::class, 'adminRegistration'])->name('students.face');
+        Route::post('/data_siswa/{student}/wajah', [FaceAttendanceController::class, 'registerAdmin'])->middleware('throttle:5,1')->name('students.face.register');
+        Route::delete('/data_siswa/{student}/wajah', [FaceAttendanceController::class, 'deleteAdminRegistration'])->name('students.face.delete');
         Route::get('/template_kartu', [StudentCardTemplateController::class, 'index'])->name('student-card-templates.index');
         Route::post('/template_kartu', [StudentCardTemplateController::class, 'store'])->name('student-card-templates.store');
         Route::delete('/template_kartu', [StudentCardTemplateController::class, 'destroy'])->name('student-card-templates.destroy');

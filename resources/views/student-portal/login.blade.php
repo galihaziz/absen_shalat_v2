@@ -13,5 +13,6 @@
         <p class="filter-feedback">Gunakan PIN yang diberikan sekolah. Demi keamanan, ubah PIN setelah berhasil masuk.</p>
         <button class="button primary" type="submit">Lihat kartu</button>
     </form>
+    <p class="filter-feedback">Ingin mendaftarkan wajah? Masuk terlebih dahulu dengan nomor induk dan PIN, lalu pilih <strong>Scan Wajah</strong> untuk mendaftarkan atau mengelola wajah akun Anda.</p>
 </section>
 @endsection

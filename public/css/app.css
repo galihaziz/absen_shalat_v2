@@ -136,6 +136,31 @@ tbody tr:hover { background: #f7faf8; }
 .attendance-table select { width: 56px; min-width: 56px; max-width: 56px; min-height: 34px; padding: 4px; }
 .attendance-scan-time { display: block; padding-top: 3px; color: var(--muted); font-size: 11px; text-align: center; }
 .qr-scan-panel { max-width: 920px; }
+.face-scan-panel { max-width: 1080px; }
+.face-scan-modes { margin-bottom: 16px; }
+.face-camera-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 24px; }
+.face-camera-viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #294243; border-radius: 4px; background: #142725; }
+.face-camera-viewport video, .face-camera-viewport canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.face-camera-viewport canvas { pointer-events: none; }
+.face-detection-guide { position: absolute; z-index: 1; inset: 8% 26% 8%; display: grid; place-items: end center; border: 2px dashed #8fe1b4; border-radius: 48% 48% 38% 38% / 35% 35% 30% 30%; color: white; pointer-events: none; }
+.face-detection-guide span { margin-bottom: -25px; padding: 4px 8px; border-radius: 3px; background: #142725c9; font-size: 12px; }
+.face-camera-viewport canvas { z-index: 2; }
+.face-camera-placeholder { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 20px; color: white; text-align: center; }
+.face-camera-placeholder[hidden], .face-registration-fields[hidden], .face-scan-result[hidden], .face-camera-feedback [hidden] { display: none; }
+.face-camera-placeholder span, .face-privacy-note { color: var(--muted); font-size: 13px; }
+.face-camera-actions { justify-content: center; margin-top: 14px; }
+.face-camera-feedback { min-width: 0; }
+.face-camera-feedback > p:nth-child(2) { min-height: 48px; color: var(--muted); }
+.face-camera-feedback .error-feedback { color: #a5372c !important; }
+.face-registration-fields { display: grid; gap: 10px; margin: 12px 0; }
+.face-registration-fields p, .face-registration-management { margin: 0; color: var(--muted); font-size: 13px; }
+.face-pose-step { color: var(--green-dark) !important; font-size: 17px !important; font-weight: 700; }
+.face-pose-progress { height: 8px; overflow: hidden; border-radius: 8px; background: var(--line); }
+.face-pose-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--green); transition: width 180ms ease; }
+.face-registration-management { justify-content: space-between; margin: 12px 0; }
+.face-registration-management form { margin: 0; }
+.face-scan-result { margin: 14px 0; padding: 12px; border-left: 3px solid var(--green); background: #eef7f1; }
+.face-privacy-note { margin-top: 16px; }
 .qr-scan-date { margin: 0 0 4px; color: var(--ink); font-weight: 700; }
 .qr-scan-cutoff { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
 .scan-cutoff-panel { border-left: 3px solid var(--green); }
@@ -263,6 +288,7 @@ tbody tr:hover { background: #f7faf8; }
     .account { margin-left: auto; }
     .content-grid { grid-template-columns: minmax(0, 1fr); }
     .qr-scan-layout { grid-template-columns: minmax(0, 1fr); }
+    .face-camera-layout { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
     h1 { font-size: 26px; }

@@ -5,6 +5,7 @@ namespace AbsenShalat\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Hash;
 
 class Student extends Model
@@ -39,5 +40,10 @@ class Student extends Model
     public function attendances(): HasMany
     {
         return $this->hasMany(Attendance::class, 'id_siswa');
+    }
+
+    public function faceRegistration(): HasOne
+    {
+        return $this->hasOne(StudentFaceRegistration::class, 'student_id');
     }
 }

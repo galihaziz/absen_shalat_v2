@@ -6,6 +6,7 @@ use AbsenShalat\Models\Attendance;
 use AbsenShalat\Models\AppSetting;
 use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\Student;
+use App\Services\AttendanceRecorder;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +38,7 @@ class AttendanceController extends Controller
         ]);
     }
 
-    public function scan(Request $request): JsonResponse
+    public function scan(Request $request, AttendanceRecorder $recorder): JsonResponse
     {
         $data = $request->validate([
             'induk' => ['required', 'string', 'regex:/^\d+$/', 'max:30'],
@@ -79,16 +80,11 @@ class AttendanceController extends Controller
             ], 422);
         }
 
-        $date = $now->toDateString();
-        $attendance = Attendance::query()->firstOrNew(['id_siswa' => $student->id, 'tanggal' => $date]);
-        $alreadyPresent = $attendance->exists && $attendance->status === 'H';
         $status = $isHaid ? 'M' : 'H';
-        $alreadyRecorded = $attendance->exists && $attendance->status === $status;
-        $scanTime = $alreadyRecorded ? ($attendance->waktu_scan ?? $now) : $now;
-        Attendance::query()->updateOrCreate(
-            ['id_siswa' => $student->id, 'tanggal' => $date],
-            ['status' => $status, 'waktu_scan' => $scanTime]
-        );
+        $record = $recorder->record($student, $status, $now);
+        $alreadyPresent = $record['already_present'];
+        $alreadyRecorded = $record['already_recorded'];
+        $scanTime = $record['attendance']->waktu_scan ?? $now;
 
         return response()->json([
             'success' => true,
@@ -98,7 +94,7 @@ class AttendanceController extends Controller
                 ? ($alreadyRecorded ? 'Keterangan M sudah tercatat hari ini.' : 'Keterangan: M berhasil dicatat.')
                 : ($alreadyPresent ? 'Siswa sudah tercatat hadir hari ini.' : 'Kehadiran berhasil dicatat.'),
             'student' => ['nama' => $student->nama, 'induk' => $student->induk, 'kelas' => $student->classroom->nama],
-            'tanggal' => $date,
+            'tanggal' => $record['attendance']->tanggal,
             'waktu_scan' => $scanTime->format('H:i:s'),
             'keterangan' => $isHaid ? 'M' : 'H',
         ]);

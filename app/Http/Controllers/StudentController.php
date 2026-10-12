@@ -41,7 +41,7 @@ class StudentController extends Controller
             ->join('kelas as student_classrooms', 'student_classrooms.id', '=', 'siswa.id_kelas')
             ->select('siswa.*')
             ->where('is_alumni', false)
-            ->with('classroom')
+            ->with(['classroom', 'faceRegistration'])
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($studentQuery) use ($search): void {
                     $studentQuery->where('siswa.nama', 'like', '%'.$search.'%')

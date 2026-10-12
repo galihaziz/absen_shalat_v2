@@ -4,6 +4,10 @@
 
     const modelUrl = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@v0.22.2/weights';
     const video = document.querySelector('#faceCameraVideo');
+    const qualityCanvas = document.createElement('canvas');
+    qualityCanvas.width = 48;
+    qualityCanvas.height = 36;
+    const qualityContext = qualityCanvas.getContext('2d', { willReadFrequently: true });
     const memory = navigator.deviceMemory || 4;
     const cores = navigator.hardwareConcurrency || 4;
     const lowPowerDevice = memory <= 4 || cores <= 4;
@@ -165,6 +169,65 @@
         context.shadowBlur = 0;
     };
 
+    const imageQualityIssue = (detection) => {
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        if (!width || !height || !qualityContext) return 'Kamera belum siap. Coba lagi sebentar.';
+
+        const box = detection.box || detection.detection.box;
+        const faceWidth = box.width / width;
+        const faceHeight = box.height / height;
+        const centerX = (box.x + box.width / 2) / width;
+        const centerY = (box.y + box.height / 2) / height;
+        if (faceWidth < 0.22 || faceHeight < 0.24) return 'Dekatkan wajah sedikit agar terlihat jelas di dalam kotak.';
+        if (faceWidth > 0.78 || faceHeight > 0.86) return 'Mundurkan wajah sedikit agar seluruh wajah masuk kamera.';
+        if (centerX < 0.28 || centerX > 0.72 || centerY < 0.18 || centerY > 0.82) {
+            return 'Posisikan wajah di tengah kotak kamera.';
+        }
+
+        qualityContext.drawImage(video, 0, 0, qualityCanvas.width, qualityCanvas.height);
+        const pixels = qualityContext.getImageData(0, 0, qualityCanvas.width, qualityCanvas.height).data;
+        const luminance = new Float32Array(qualityCanvas.width * qualityCanvas.height);
+        let brightness = 0;
+        for (let pixel = 0, index = 0; pixel < pixels.length; pixel += 4, index++) {
+            const value = 0.299 * pixels[pixel] + 0.587 * pixels[pixel + 1] + 0.114 * pixels[pixel + 2];
+            luminance[index] = value;
+            brightness += value;
+        }
+        brightness /= luminance.length;
+        if (brightness < 42) return 'Pencahayaan terlalu redup. Nyalakan lampu dan hadapkan wajah ke sumber cahaya.';
+        if (brightness > 218) return 'Wajah terlalu terang. Hindari cahaya langsung dari belakang kamera.';
+
+        let laplacianMean = 0;
+        let laplacianSquareMean = 0;
+        let count = 0;
+        for (let y = 1; y < qualityCanvas.height - 1; y++) {
+            for (let x = 1; x < qualityCanvas.width - 1; x++) {
+                const index = y * qualityCanvas.width + x;
+                const laplacian = luminance[index - qualityCanvas.width]
+                    + luminance[index + qualityCanvas.width]
+                    + luminance[index - 1]
+                    + luminance[index + 1]
+                    - 4 * luminance[index];
+                laplacianMean += laplacian;
+                laplacianSquareMean += laplacian * laplacian;
+                count++;
+            }
+        }
+        const sharpness = laplacianSquareMean / count - (laplacianMean / count) ** 2;
+        if (sharpness < 12) return 'Gambar wajah buram. Bersihkan lensa dan tahan ponsel tetap stabil.';
+        return null;
+    };
+
+    const descriptorDistance = (left, right) => {
+        let sum = 0;
+        for (let index = 0; index < left.length; index++) {
+            const difference = left[index] - right[index];
+            sum += difference * difference;
+        }
+        return Math.sqrt(sum);
+    };
+
     const detectFaces = async () => {
         if (!stream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return [];
         const needsLandmarks = mode === 'registration' || stableDetections > 0;
@@ -224,6 +287,8 @@
             .withFaceLandmarks()
             .withFaceDescriptor();
         if (!descriptorDetection) throw new Error('Wajah berubah atau tidak terbaca. Tahan posisi dan coba lagi.');
+        const qualityIssue = imageQualityIssue(descriptorDetection);
+        if (qualityIssue) throw new Error(qualityIssue);
         return Array.from(descriptorDetection.descriptor);
     };
 
@@ -231,9 +296,11 @@
         if (busy || scanLatched) return;
         busy = true;
         scanLatched = true;
-        setStatus('Wajah stabil. Memverifikasi dan mencatat presensi…');
+        setStatus('Wajah stabil. Mengambil dua sampel untuk memastikan kecocokan…');
         try {
             attendanceSamples.splice(0, attendanceSamples.length, await captureDescriptor());
+            await new Promise((resolve) => window.setTimeout(resolve, 180));
+            attendanceSamples.push(await captureDescriptor());
             const data = await postJson(panel.dataset.attendanceEndpoint, {
                 descriptors: attendanceSamples,
                 ...(attendanceType === 'haid' ? { jenis: 'haid' } : {}),
@@ -292,11 +359,33 @@
             return;
         }
         stablePoseDetections++;
-        poseFeedback.textContent = stablePoseDetections < 2 ? 'Bagus, tahan posisi sebentar…' : 'Pose stabil, mengambil sampel…';
+        poseFeedback.textContent = stablePoseDetections < 2 ? 'Bagus, tahan posisi sebentar…' : 'Memeriksa cahaya dan ketajaman wajah…';
         if (stablePoseDetections < 2) return;
 
+        const qualityIssue = imageQualityIssue(detection);
+        if (qualityIssue) {
+            stablePoseDetections = 0;
+            poseFeedback.textContent = qualityIssue;
+            return;
+        }
+
         stablePoseDetections = 0;
-        registeredDescriptors.push(await captureDescriptor());
+        const poseDescriptors = [];
+        try {
+            poseDescriptors.push(await captureDescriptor());
+            await new Promise((resolve) => window.setTimeout(resolve, 180));
+            poseDescriptors.push(await captureDescriptor());
+        } catch (error) {
+            poseFeedback.textContent = error.message;
+            return;
+        }
+        if (descriptorDistance(poseDescriptors[0], poseDescriptors[1]) > 0.35) {
+            poseFeedback.textContent = 'Sampel berubah-ubah. Tahan ponsel stabil dan ulangi pose ini.';
+            return;
+        }
+        registeredDescriptors.push(
+            poseDescriptors[0].map((value, index) => (value + poseDescriptors[1][index]) / 2)
+        );
         if (poseIndex === 0) frontPitch = pose.pitch;
         poseIndex++;
         sampleCount.textContent = `${poseIndex} dari ${poses.length} pose`;
@@ -352,7 +441,15 @@
                     }
                 } else if (!busy && !scanLatched) {
                     stableDetections++;
-                    if (stableDetections >= 2) await submitAttendance();
+                    if (stableDetections >= 2) {
+                        const qualityIssue = imageQualityIssue(box);
+                        if (qualityIssue) {
+                            stableDetections = 0;
+                            setStatus(qualityIssue);
+                        } else {
+                            await submitAttendance();
+                        }
+                    }
                     else setStatus('Wajah terdeteksi. Tahan sebentar untuk scan otomatis…');
                 }
             }

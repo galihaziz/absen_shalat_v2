@@ -87,15 +87,15 @@ class FaceAttendanceController extends Controller
     public function registerAdmin(Request $request, Student $student): JsonResponse
     {
         abort_if($student->is_alumni, 404);
-        $registration = $this->storeRegistration($request, $student);
-        if ($registration === null) {
-            return $this->duplicateRegistrationResponse();
+        $result = $this->storeRegistration($request, $student);
+        if ($result['duplicate'] !== null) {
+            return $this->duplicateRegistrationResponse($result['duplicate'], true);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Registrasi wajah '.$student->nama.' berhasil disimpan.',
-            'kode_wajah' => $registration->face_code,
+            'kode_wajah' => $result['registration']->face_code,
         ]);
     }
 
@@ -104,15 +104,15 @@ class FaceAttendanceController extends Controller
         /** @var Student $student */
         $student = $request->attributes->get('studentPortalStudent');
         abort_if($student->is_alumni, 404);
-        $registration = $this->storeRegistration($request, $student);
-        if ($registration === null) {
-            return $this->duplicateRegistrationResponse();
+        $result = $this->storeRegistration($request, $student);
+        if ($result['duplicate'] !== null) {
+            return $this->duplicateRegistrationResponse($result['duplicate']);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Registrasi wajah berhasil disimpan untuk akun ini.',
-            'kode_wajah' => $registration->face_code,
+            'kode_wajah' => $result['registration']->face_code,
         ]);
     }
 
@@ -158,7 +158,10 @@ class FaceAttendanceController extends Controller
         return $this->attendanceResponse($student, $recorder, 'H');
     }
 
-    private function storeRegistration(Request $request, Student $student): ?StudentFaceRegistration
+    /**
+     * @return array{registration: ?StudentFaceRegistration, duplicate: ?Student}
+     */
+    private function storeRegistration(Request $request, Student $student): array
     {
         $data = $request->validate([
             'induk' => ['required', 'string', 'regex:/^\d+$/', 'max:30'],
@@ -176,24 +179,30 @@ class FaceAttendanceController extends Controller
             $data['descriptors']
         );
 
-        return DB::transaction(function () use ($student, $descriptors): ?StudentFaceRegistration {
+        return DB::transaction(function () use ($student, $descriptors): array {
             $duplicate = app(StudentFaceRecognition::class)->duplicateRegistration($student->id, $descriptors);
             if ($duplicate !== null) {
-                return null;
+                return ['registration' => null, 'duplicate' => $duplicate];
             }
 
-            return StudentFaceRegistration::query()->updateOrCreate(
+            $registration = StudentFaceRegistration::query()->updateOrCreate(
                 ['student_id' => $student->id],
                 ['face_descriptor' => json_encode($descriptors, JSON_THROW_ON_ERROR)]
             );
+
+            return ['registration' => $registration, 'duplicate' => null];
         });
     }
 
-    private function duplicateRegistrationResponse(): JsonResponse
+    private function duplicateRegistrationResponse(Student $duplicate, bool $includeIdentity = false): JsonResponse
     {
+        $message = $includeIdentity
+            ? 'Wajah ini sudah terdaftar pada siswa '.$duplicate->nama.' (NIS '.$duplicate->induk.'). Registrasi dibatalkan.'
+            : 'Wajah ini sudah terdaftar pada data siswa lain. Registrasi dibatalkan. Jika ini wajah Anda, hubungi admin untuk pemeriksaan.';
+
         return response()->json([
             'success' => false,
-            'message' => 'Wajah ini sudah terdaftar pada data siswa lain (NIS berbeda). Registrasi dibatalkan. Jika ini wajah Anda, hubungi admin untuk pemeriksaan.',
+            'message' => $message,
         ], 409);
     }
 

@@ -129,10 +129,33 @@ class FaceAttendanceTest extends TestCase
             'descriptors' => $registeredDescriptors,
         ])->assertStatus(409)
             ->assertJsonPath('success', false)
-            ->assertJsonPath('message', 'Wajah ini sudah terdaftar pada data siswa lain (NIS berbeda). Registrasi dibatalkan. Jika ini wajah Anda, hubungi admin untuk pemeriksaan.');
+            ->assertJsonPath('message', 'Wajah ini sudah terdaftar pada siswa '.$registeredStudent->nama.' (NIS '.$registeredStudent->induk.'). Registrasi dibatalkan.');
 
         $this->assertDatabaseMissing('student_face_registrations', ['student_id' => $newStudent->id]);
         $this->assertSame(1, StudentFaceRegistration::query()->count());
+    }
+
+    public function test_student_duplicate_registration_does_not_reveal_another_students_identity(): void
+    {
+        $registeredStudent = $this->makeStudent('10017');
+        $portalStudent = $this->makeStudent('10018');
+        $descriptors = $this->registrationDescriptors();
+        StudentFaceRegistration::query()->create([
+            'student_id' => $registeredStudent->id,
+            'face_descriptor' => json_encode($descriptors, JSON_THROW_ON_ERROR),
+        ]);
+
+        $response = $this->withSession(['student_portal_id' => $portalStudent->id])
+            ->postJson(route('student.portal.face.register'), [
+                'induk' => $portalStudent->induk,
+                'descriptors' => $descriptors,
+            ])->assertStatus(409)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Wajah ini sudah terdaftar pada data siswa lain. Registrasi dibatalkan. Jika ini wajah Anda, hubungi admin untuk pemeriksaan.');
+
+        $response->assertDontSee($registeredStudent->nama);
+        $response->assertDontSee($registeredStudent->induk);
+        $this->assertDatabaseMissing('student_face_registrations', ['student_id' => $portalStudent->id]);
     }
 
     public function test_different_face_registrations_receive_different_unique_codes(): void
@@ -202,6 +225,32 @@ class FaceAttendanceTest extends TestCase
             'tanggal' => now()->toDateString(),
             'status' => 'H',
         ]);
+    }
+
+    public function test_face_attendance_rejects_samples_that_identify_different_students(): void
+    {
+        $admin = $this->makeUser('admin');
+        $firstStudent = $this->makeStudent('10015');
+        $secondStudent = $this->makeStudent('10016');
+        StudentFaceRegistration::query()->create([
+            'student_id' => $firstStudent->id,
+            'face_descriptor' => json_encode(array_fill(0, 128, 0.01), JSON_THROW_ON_ERROR),
+        ]);
+        StudentFaceRegistration::query()->create([
+            'student_id' => $secondStudent->id,
+            'face_descriptor' => json_encode(array_fill(0, 128, 0.6), JSON_THROW_ON_ERROR),
+        ]);
+
+        $this->actingAs($admin)->postJson(route('face.attendance.record'), [
+            'descriptors' => [
+                array_fill(0, 128, 0.01),
+                array_fill(0, 128, 0.6),
+            ],
+        ])->assertNotFound()
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseMissing('absensi', ['id_siswa' => $firstStudent->id]);
+        $this->assertDatabaseMissing('absensi', ['id_siswa' => $secondStudent->id]);
     }
 
     public function test_face_scanner_records_menstruation_status_only_for_female_students(): void

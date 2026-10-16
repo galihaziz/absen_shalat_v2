@@ -3,6 +3,7 @@
 #by galih aziz wahyudi
 
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\FaceAttendanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PasswordResetController;
@@ -62,6 +63,17 @@ Route::middleware('auth')->group(function () {
         Route::post('/laporan/batas-scan', [ReportController::class, 'updateScanCutoff'])->name('reports.scan-cutoff.update');
         Route::get('/alpha', [ReportController::class, 'alpha'])->middleware('throttle:30,1')->name('reports.alpha');
         Route::get('/export_excel', [ExportController::class, 'excel'])->middleware('throttle:5,1')->name('reports.export');
+    });
+
+    Route::middleware('role:admin,kesiswaan')->group(function () {
+        Route::get('/backup', [DatabaseBackupController::class, 'index'])->name('backups.index');
+        Route::post('/backup', [DatabaseBackupController::class, 'store'])->middleware('throttle:5,1')->name('backups.store');
+    });
+
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/backup/{archive}/restore', [DatabaseBackupController::class, 'restore'])
+            ->middleware('throttle:3,1')
+            ->name('backups.restore');
     });
 
     Route::middleware('role:admin,kesiswaan')->group(function () {

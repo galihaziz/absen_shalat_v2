@@ -47,6 +47,7 @@
                 <a href="{{ route('reports.index') }}" class="{{ request()->routeIs('reports.index') ? 'is-active' : '' }}"><span class="nav-lens-label">Laporan</span></a>
                 <a href="{{ route('reports.alpha') }}" class="{{ request()->routeIs('reports.alpha') ? 'is-active' : '' }}"><span class="nav-lens-label">Siswa Alpha</span></a>
                 <a href="{{ route('students.index') }}" class="{{ request()->routeIs('students.index') ? 'is-active' : '' }}"><span class="nav-lens-label">Data Siswa</span></a>
+                <a href="{{ route('backups.index') }}" class="{{ request()->routeIs('backups.*') ? 'is-active' : '' }}"><span class="nav-lens-label">Backup &amp; Log</span></a>
                 <a href="{{ route('students.qr.selection') }}" class="{{ request()->routeIs('students.qr.selection') ? 'is-active' : '' }}"><span class="nav-lens-label">Pilih Kartu Manual</span></a>
             @endif
             @if($currentRole === 'admin')

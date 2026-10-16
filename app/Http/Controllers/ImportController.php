@@ -157,6 +157,7 @@ class ImportController extends Controller
             $updatesById = [];
             $newStudents = [];
             $newIndexesByInduk = [];
+            $defaultPortalPinHash = null;
 
             foreach ($records as $record) {
                 $classId = (int) $classIds[$record['kelas']];
@@ -202,6 +203,7 @@ class ImportController extends Controller
                 } elseif (isset($studentsByIdentity[$identity])) {
                     $student = $studentsByIdentity[$identity];
                 } else {
+                    $defaultPortalPinHash ??= Hash::make((string) config('app.student_default_pin', 'siswa123'));
                     $index = count($newStudents);
                     $student = [
                         'induk' => $record['induk'],
@@ -209,7 +211,7 @@ class ImportController extends Controller
                         'jenis_kelamin' => $record['jenis_kelamin'],
                         'id_kelas' => $classId,
                         'is_alumni' => false,
-                        'portal_pin' => Hash::make((string) config('app.student_default_pin', 'siswa123')),
+                        'portal_pin' => $defaultPortalPinHash,
                     ];
                     $newStudents[] = $student;
                     $newIndexesByInduk[$record['induk']] = $index;

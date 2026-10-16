@@ -10,11 +10,9 @@
         :photo-src="$photoAvailable ? route('students.photo', $student) : null"
         :qr-src="route('students.qr.svg', $student)"
         :template-src="$templateDataUri"
-        :template-card-height-mm="$templateCardHeightMm"
     />
-    <div class="actions qr-student-actions"><button class="button primary" type="button" onclick="window.print()">Cetak Kartu</button><a class="button" href="{{ route('students.qr.pdf', $student) }}">Unduh PDF</a></div>
+    <div class="actions qr-student-actions"><button class="button primary" type="button" onclick="window.print()">Cetak Kartu</button><a class="button" href="{{ route('students.qr.pdf', $student) }}" download="QR-{{ $student->induk }}.pdf">Unduh PDF</a></div>
 </section>
-<x-student-qr-standalone :student="$student" :qr-src="route('students.qr.svg', $student)" />
 @if($student->jenis_kelamin === 'P')
     <x-student-qr-standalone
         :student="$student"

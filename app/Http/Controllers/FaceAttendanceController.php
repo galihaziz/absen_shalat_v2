@@ -33,24 +33,30 @@ class FaceAttendanceController extends Controller
         /** @var Student $student */
         $student = $request->attributes->get('studentPortalStudent');
         abort_if($student->is_alumni, 404);
+        $student->loadMissing('faceRegistration');
 
         return view('attendance.face-scan', [
             'attendanceEndpoint' => route('student.portal.face.attendance'),
             'registrationEndpoint' => route('student.portal.face.register'),
             'student' => $student,
             'isAdminRegistration' => false,
+            'isStudentPortal' => true,
+            'cameraAutoStart' => ! $student->faceRegistration,
         ]);
     }
 
     public function adminRegistration(Student $student): View
     {
         abort_if($student->is_alumni, 404);
+        $student->loadMissing('faceRegistration');
 
         return view('attendance.face-scan', [
             'attendanceEndpoint' => null,
             'registrationEndpoint' => route('students.face.register', $student),
             'student' => $student,
             'isAdminRegistration' => true,
+            'isStudentPortal' => false,
+            'cameraAutoStart' => ! $student->faceRegistration,
         ]);
     }
 

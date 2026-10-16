@@ -45,6 +45,108 @@
             <button class="button quiet class-list-toggle" type="button" aria-controls="classList" aria-expanded="false" data-class-list-toggle data-list-id="classList" data-label-collapsed="Tampilkan semua ({{ $classes->count() }})" data-label-expanded="Tampilkan lebih sedikit">Tampilkan semua ({{ $classes->count() }})</button>
         @endif
     </details></section>
+    <section class="panel management-panel major-label-panel"><details class="management-disclosure">
+        <summary>Kelola jurusan <small>{{ count($majorGroups) }} grup</small></summary>
+        <p class="filter-feedback">Setiap grup memiliki nama tampilan dan pilihan jurusan terkait. Nama grup akan dipakai pada filter, cetak kartu, dan ringkasan.</p>
+        @error('major_group')<p class="filter-feedback" role="alert">{{ $message }}</p>@enderror
+        <div class="major-group-list">
+            @foreach($majorGroups as $majorGroup)
+                <div class="major-group-item">
+                    <form class="major-group-edit" method="post" action="{{ route('students.majors.update', $majorGroup['id']) }}" data-major-group-form>
+                        @csrf @method('PUT')
+                        <input type="hidden" name="group_id" value="{{ $majorGroup['id'] }}">
+                        @php($selectedMajors = old('group_id') === $majorGroup['id'] ? old('majors', $majorGroup['majors']) : $majorGroup['majors'])
+                        <label>Nama jurusan
+                            <input name="name" value="{{ old('group_id') === $majorGroup['id'] ? old('name', $majorGroup['name']) : $majorGroup['name'] }}" maxlength="50" required>
+                        </label>
+                        <div class="major-select-list" data-major-select-list>
+                            @foreach(range(0, max(0, count($selectedMajors) - 1)) as $majorIndex)
+                                <div class="major-select-item">
+                                    <label>Jurusan terkait <span data-major-index>{{ $majorIndex + 1 }}</span>
+                                        <select name="majors[]" @required($majorIndex === 0) data-major-select>
+                                            <option value="">Pilih jurusan</option>
+                                            @foreach($availableRelatedMajors as $relatedMajor)
+                                                <option value="{{ $relatedMajor }}" @selected(($selectedMajors[$majorIndex] ?? '') === $relatedMajor)>{{ $relatedMajor }}</option>
+                                            @endforeach
+                                        </select>
+                                    </label>
+                                    @if($majorIndex > 0)<button class="button quiet small" type="button" data-major-remove aria-label="Hapus pilihan jurusan terkait">Hapus</button>@endif
+                                </div>
+                            @endforeach
+                        </div>
+                        <button class="button quiet small major-select-add" type="button" data-major-add>+ Tambah jurusan terkait</button>
+                        <p class="major-select-preview" data-major-preview aria-live="polite">{{ implode(' - ', array_filter($selectedMajors)) }}</p>
+                        <template data-major-select-template>
+                            <div class="major-select-item">
+                                <label>Jurusan terkait <span data-major-index></span>
+                                    <select name="majors[]" data-major-select>
+                                        <option value="">Pilih jurusan</option>
+                                        @foreach($availableRelatedMajors as $relatedMajor)
+                                            <option value="{{ $relatedMajor }}">{{ $relatedMajor }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <button class="button quiet small" type="button" data-major-remove aria-label="Hapus pilihan jurusan terkait">Hapus</button>
+                            </div>
+                        </template>
+                        <button class="button primary small" type="submit">Simpan</button>
+                    </form>
+                    <form method="post" action="{{ route('students.majors.destroy', $majorGroup['id']) }}" onsubmit="return confirm('Hapus grup jurusan {{ $majorGroup['name'] }}?')">
+                        @csrf @method('DELETE')
+                        <button class="button danger small" type="submit">Hapus</button>
+                    </form>
+                </div>
+            @endforeach
+        </div>
+        <form class="major-group-create" method="post" action="{{ route('students.majors.store') }}" data-major-group-form>
+            @csrf
+            <h3>Tambah grup jurusan</h3>
+            <label>Nama jurusan<input name="name" value="{{ old('group_id') ? '' : old('name') }}" maxlength="50" placeholder="Contoh: Rekayasa Perangkat Lunak" required></label>
+            <div class="major-select-list" data-major-select-list>
+                <div class="major-select-item">
+                    <label>Jurusan terkait <span data-major-index>1</span>
+                        <select name="majors[]" required data-major-select>
+                            <option value="">Pilih jurusan</option>
+                            @foreach($availableRelatedMajors as $relatedMajor)
+                                <option value="{{ $relatedMajor }}" @selected(! old('group_id') && (old('majors.0') ?? '') === $relatedMajor)>{{ $relatedMajor }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                </div>
+                @if(! old('group_id'))
+                    @foreach(array_slice(old('majors', []), 1) as $oldMajor)
+                        <div class="major-select-item">
+                            <label>Jurusan terkait <span data-major-index>{{ $loop->iteration + 1 }}</span>
+                                <select name="majors[]" data-major-select>
+                                    <option value="">Pilih jurusan</option>
+                                    @foreach($availableRelatedMajors as $relatedMajor)
+                                        <option value="{{ $relatedMajor }}" @selected($oldMajor === $relatedMajor)>{{ $relatedMajor }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <button class="button quiet small" type="button" data-major-remove aria-label="Hapus pilihan jurusan terkait">Hapus</button>
+                        </div>
+                    @endforeach
+                @endif
+            </div>
+            <button class="button quiet small major-select-add" type="button" data-major-add>+ Tambah jurusan terkait</button>
+            <p class="major-select-preview" data-major-preview aria-live="polite">{{ implode(' - ', old('group_id') ? [] : array_filter(old('majors', []))) }}</p>
+            <template data-major-select-template>
+                <div class="major-select-item">
+                    <label>Jurusan terkait <span data-major-index></span>
+                        <select name="majors[]" data-major-select>
+                            <option value="">Pilih jurusan</option>
+                            @foreach($availableRelatedMajors as $relatedMajor)
+                                <option value="{{ $relatedMajor }}">{{ $relatedMajor }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <button class="button quiet small" type="button" data-major-remove aria-label="Hapus pilihan jurusan terkait">Hapus</button>
+                </div>
+            </template>
+            <button class="button primary" type="submit">Tambah grup</button>
+        </form>
+    </details></section>
     <section class="panel compact-panel">
         <h2>Foto siswa</h2>
         <form class="filters" method="post" action="{{ route('students.photo.store') }}" enctype="multipart/form-data">
@@ -176,6 +278,63 @@ massDeleteScope?.addEventListener('change', updateMassDeleteTarget);
 massDeleteTargets.forEach((target) => target.querySelector('select').addEventListener('change', updateMassDeleteTarget));
 updateMassDeleteTarget();
 
+document.querySelectorAll('form[data-major-group-form]').forEach((form) => {
+    const list = form.querySelector('[data-major-select-list]');
+    const template = form.querySelector('[data-major-select-template]');
+    const addButton = form.querySelector('[data-major-add]');
+    const preview = form.querySelector('[data-major-preview]');
+    if (!list || !template || !addButton || !preview) return;
+
+    const refreshMajorSelections = () => {
+        const selects = Array.from(list.querySelectorAll('[data-major-select]'));
+        const selected = selects.map((select) => select.value).filter(Boolean);
+
+        selects.forEach((select, index) => {
+            select.required = index === 0;
+            Array.from(select.options).forEach((option) => {
+                option.disabled = Boolean(option.value && selected.includes(option.value) && select.value !== option.value);
+            });
+            const label = select.closest('.major-select-item');
+            const labelIndex = label?.querySelector('[data-major-index]');
+            if (labelIndex) labelIndex.textContent = String(index + 1);
+            const removeButton = label?.querySelector('[data-major-remove]');
+            if (removeButton) removeButton.hidden = selects.length === 1;
+        });
+
+        preview.textContent = selected.join(' - ');
+        addButton.disabled = selects.length >= 8;
+    };
+
+    addButton.addEventListener('click', () => {
+        if (list.querySelectorAll('[data-major-select]').length >= 8) return;
+        const newItem = template.content.firstElementChild.cloneNode(true);
+        list.append(newItem);
+        refreshMajorSelections();
+        newItem.querySelector('[data-major-select]')?.focus();
+    });
+
+    list.addEventListener('change', (event) => {
+        if (event.target.matches('[data-major-select]')) refreshMajorSelections();
+    });
+    list.addEventListener('click', (event) => {
+        const removeButton = event.target.closest('[data-major-remove]');
+        if (!removeButton) return;
+        removeButton.closest('.major-select-item')?.remove();
+        refreshMajorSelections();
+    });
+    form.addEventListener('submit', (event) => {
+        const selections = Array.from(list.querySelectorAll('[data-major-select]'))
+            .map((select) => select.value)
+            .filter(Boolean);
+        if (new Set(selections).size !== selections.length) {
+            event.preventDefault();
+            preview.textContent = 'Jurusan yang sama tidak bisa dipilih lebih dari sekali.';
+        }
+    });
+
+    refreshMajorSelections();
+});
+
 massDeleteForm?.addEventListener('submit', (event) => {
     const selectedOption = massDeleteTargets
         ? Array.from(massDeleteTargets).find((target) => !target.hidden)?.querySelector('select')?.selectedOptions[0]
@@ -190,6 +349,8 @@ massDeleteForm?.addEventListener('submit', (event) => {
 studentList?.addEventListener('click', async (event) => {
     const link = event.target.closest('[data-student-qr-link]');
     if (!link || !studentQrDialog || !studentQrDialogContent) return;
+
+    if (window.matchMedia('(max-width: 640px)').matches) return;
 
     event.preventDefault();
     studentQrDialog.showModal();
@@ -216,6 +377,10 @@ studentList?.addEventListener('click', async (event) => {
 });
 
 studentQrDialog?.querySelector('[data-student-qr-close]')?.addEventListener('click', () => studentQrDialog.close());
+studentQrDialogContent?.addEventListener('click', (event) => {
+    const downloadLink = event.target.closest('a[download]');
+    if (downloadLink && studentQrDialog.open) studentQrDialog.close();
+});
 studentQrDialog?.addEventListener('click', (event) => {
     if (event.target === studentQrDialog) studentQrDialog.close();
 });

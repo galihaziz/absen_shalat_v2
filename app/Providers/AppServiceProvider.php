@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\MajorCatalog;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\ServiceProvider;
@@ -16,7 +17,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(MajorCatalog::class);
     }
 
     /**

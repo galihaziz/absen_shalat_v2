@@ -7,6 +7,7 @@ use AbsenShalat\Models\Student;
 use App\Services\StudentCardPhotoProcessor;
 use App\Services\StudentCardTemplateStorage;
 use App\Services\StudentQrCodeGenerator;
+use App\Services\MajorCatalog;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Database\QueryException;
@@ -26,6 +27,8 @@ class StudentController extends Controller
     private const CARD_WIDTH_MM = 53.98;
 
     private const CARD_HEIGHT_MM = 85.6;
+
+    private const CARD_FOLD_GAP_MM = 1;
 
     public function __construct(
         private readonly StudentCardPhotoProcessor $photoProcessor,
@@ -70,6 +73,10 @@ class StudentController extends Controller
         $classes = Classroom::query()
             ->withCount(['students' => fn ($query) => $query->where('is_alumni', false)])
             ->orderBy('nama')->get();
+        $majorCatalog = app(MajorCatalog::class);
+        $classroomNames = $classes->pluck('nama');
+        $majorGroups = $majorCatalog->groups($classroomNames);
+        $availableRelatedMajors = $majorCatalog->availableMajors($classroomNames);
         $grades = $classes->map(fn (Classroom $class): ?string => $this->classroomGrade($class->nama))
             ->filter()->unique()
             ->sortBy(fn (string $grade): int => ['X' => 10, 'XI' => 11, 'XII' => 12][$grade])
@@ -102,7 +109,51 @@ class StudentController extends Controller
         $attendanceDeleteYear = (int) date('Y');
         $monthNames = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-        return view('students.index', compact('students', 'classes', 'grades', 'majors', 'massDeleteOptions', 'editing', 'editingPhotoAvailable', 'search', 'matchingStudentCount', 'attendanceDeleteMonth', 'attendanceDeleteYear', 'monthNames'));
+        return view('students.index', compact('students', 'classes', 'grades', 'majors', 'majorGroups', 'availableRelatedMajors', 'massDeleteOptions', 'editing', 'editingPhotoAvailable', 'search', 'matchingStudentCount', 'attendanceDeleteMonth', 'attendanceDeleteYear', 'monthNames'));
+    }
+
+    public function storeMajorGroup(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:50'],
+            'majors' => ['required', 'array', 'min:1', 'max:8'],
+            'majors.*' => ['nullable', 'string', 'max:50'],
+        ]);
+        $majorCatalog = app(MajorCatalog::class);
+        $majorCatalog->createGroup($data['name'], $data['majors'], Classroom::query()->pluck('nama'));
+
+        return redirect()->route('students.index')->with('status', 'Grup jurusan berhasil ditambahkan.');
+    }
+
+    public function updateMajorGroup(Request $request, string $majorGroup): RedirectResponse
+    {
+        $data = $request->validate([
+            'group_id' => ['required', 'string', 'max:80'],
+            'name' => ['required', 'string', 'max:50'],
+            'majors' => ['required', 'array', 'min:1', 'max:8'],
+            'majors.*' => ['nullable', 'string', 'max:50'],
+        ]);
+        if ($data['group_id'] !== $majorGroup) {
+            throw ValidationException::withMessages([
+                'major_group' => 'Identitas grup jurusan tidak cocok. Muat ulang halaman lalu coba kembali.',
+            ]);
+        }
+
+        app(MajorCatalog::class)->updateGroup(
+            $majorGroup,
+            $data['name'],
+            $data['majors'],
+            Classroom::query()->pluck('nama')
+        );
+
+        return redirect()->route('students.index')->with('status', 'Grup jurusan berhasil diperbarui.');
+    }
+
+    public function destroyMajorGroup(string $majorGroup): RedirectResponse
+    {
+        app(MajorCatalog::class)->deleteGroup($majorGroup, Classroom::query()->pluck('nama'));
+
+        return redirect()->route('students.index')->with('status', 'Grup jurusan berhasil dihapus.');
     }
 
     public function qrSelection(Request $request): View|JsonResponse
@@ -302,7 +353,6 @@ class StudentController extends Controller
             'student' => $student,
             'photoAvailable' => $this->studentPhotoPath($student->induk) !== null,
             'templateDataUri' => $this->templateStorage->dataUri(),
-            'templateCardHeightMm' => self::CARD_HEIGHT_MM,
         ]);
     }
 
@@ -451,8 +501,8 @@ class StudentController extends Controller
         $pdf->setPaper([
             0,
             0,
-            self::CARD_WIDTH_MM * 72 / 25.4,
-            self::CARD_HEIGHT_MM * 72 / 25.4,
+            (self::CARD_WIDTH_MM * 2 + self::CARD_FOLD_GAP_MM + 2) * 72 / 25.4,
+            (self::CARD_HEIGHT_MM + 2) * 72 / 25.4,
         ]);
         $pdf->render();
 
@@ -468,7 +518,7 @@ class StudentController extends Controller
         $options->setIsRemoteEnabled(false);
         $pdf = new Dompdf($options);
         $pdf->loadHtml(view('students.qr-batch-pdf', compact('cards'))->render(), 'UTF-8');
-        $pdf->setPaper('A4', 'portrait');
+        $pdf->setPaper('A4', 'landscape');
         $pdf->render();
 
         return response($pdf->output(), 200, [

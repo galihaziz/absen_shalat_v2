@@ -24,13 +24,18 @@
     data-attendance-endpoint="{{ $attendanceEndpoint ?? '' }}"
     data-registration-endpoint="{{ $registrationEndpoint ?? '' }}"
     data-admin-registration="{{ $isAdminRegistration ? 'true' : 'false' }}"
+    data-camera-auto-start="{{ ($cameraAutoStart ?? false) ? 'true' : 'false' }}"
     data-student-induk="{{ $student?->induk ?? '' }}"
 >
     @if($student)
         <p class="qr-scan-date">Siswa: {{ $student->nama }} · Nomor induk {{ $student->induk }}</p>
+        <div class="face-registration-status {{ $student->faceRegistration ? 'is-registered' : 'is-unregistered' }}" role="status">
+            <strong>{{ $student->faceRegistration ? 'Wajah sudah terdaftar' : 'Wajah belum terdaftar' }}</strong>
+            <span>{{ $student->faceRegistration ? 'Data wajah tersimpan untuk akun siswa ini.' : 'Daftarkan wajah terlebih dahulu agar fitur scan wajah dapat digunakan.' }}</span>
+        </div>
         @if($student->faceRegistration)
             <div class="actions face-registration-management">
-                <span>Wajah sudah terdaftar. Kode unik wajah: <code>{{ $student->faceRegistration->face_code }}</code></span>
+                <span>Kode unik wajah: <code>{{ $student->faceRegistration->face_code }}</code></span>
                 @if($isAdminRegistration)
                     <form method="post" action="{{ route('students.face.delete', $student) }}" onsubmit="return confirm('Hapus data wajah {{ $student->nama }}?')">
                         @csrf @method('DELETE')
@@ -46,9 +51,14 @@
         @endif
     @endif
 
-    @if($attendanceEndpoint && $registrationEndpoint)
+    @if($attendanceEndpoint && $registrationEndpoint && ! ($isStudentPortal ?? false))
         <div class="actions face-scan-modes" role="group" aria-label="Mode scan wajah">
             <button class="button primary" type="button" data-face-mode="attendance" aria-pressed="true">Presensi</button>
+            <button class="button" type="button" data-face-mode="registration" aria-pressed="false">Daftarkan wajah</button>
+        </div>
+    @endif
+    @if($isStudentPortal ?? false)
+        <div class="actions face-scan-modes" role="group" aria-label="Mode scan wajah">
             <button class="button" type="button" data-face-mode="registration" aria-pressed="false">Daftarkan wajah</button>
         </div>
     @endif
@@ -67,20 +77,22 @@
                 <canvas id="faceCameraOverlay" aria-hidden="true"></canvas>
                 <div class="face-detection-guide" aria-hidden="true"><span>Posisikan wajah di sini</span></div>
                 <div class="face-camera-placeholder" id="faceCameraPlaceholder">
-                    <strong>Kamera akan dibuka otomatis</strong>
-                    <span>Izinkan akses kamera saat browser meminta. Presensi akan dikirim otomatis setelah wajah terdeteksi.</span>
+                    <strong>{{ ($cameraAutoStart ?? false) ? 'Kamera akan dibuka otomatis' : 'Kamera belum aktif' }}</strong>
+                    <span>{{ ($cameraAutoStart ?? false) ? 'Izinkan akses kamera saat browser meminta. Presensi akan dikirim otomatis setelah wajah terdeteksi.' : 'Tekan tombol Mulai kamera untuk memulai scan wajah.' }}</span>
                 </div>
             </div>
             <div class="actions face-camera-actions">
-                <button class="button primary" id="faceCameraToggle" type="button">Coba buka kamera</button>
+                <button class="button primary" id="faceCameraToggle" type="button">{{ ($cameraAutoStart ?? false) ? 'Coba buka kamera' : 'Mulai kamera' }}</button>
+                <button class="button" id="faceCameraSourceToggle" type="button">Pindah ke kamera belakang</button>
                 <button class="button" id="faceCameraStop" type="button" disabled>Matikan kamera</button>
             </div>
         </div>
         <div class="face-camera-feedback">
             <p class="eyebrow">STATUS</p>
             <p id="faceScanStatus" role="status" aria-live="polite">Siap menggunakan scan wajah.</p>
+            <p id="faceDetectorMetrics" class="face-detector-metrics" hidden></p>
             <div class="face-registration-fields" id="faceRegistrationFields" hidden>
-                <p>Ikuti instruksi di bawah. Tahan setiap pose sampai wajah terdeteksi stabil; pendaftaran tersimpan otomatis setelah semua pose selesai. Nomor induk diambil dari akun siswa.</p>
+                <p>Ikuti satu arahan pose sampai pesan “berhasil direkam” muncul. Jangan buru-buru pindah pose; tahan posisi sampai proses selesai. Wajah akan tersimpan otomatis setelah kelima pose direkam. Nomor induk diambil dari akun siswa.</p>
                 <p id="facePoseStep" class="face-pose-step" aria-live="polite">Siap memulai.</p>
                 <p id="faceSampleCount">0 dari 5 pose</p>
                 <div class="face-pose-progress" aria-hidden="true"><span id="facePoseProgress"></span></div>
@@ -88,7 +100,7 @@
                 <button class="button primary" id="faceRegistrationRetry" type="button" hidden>Coba simpan kembali</button>
             </div>
             <div id="faceScanResult" class="face-scan-result" role="status" aria-live="polite" hidden></div>
-            <p class="face-privacy-note">Gambar video tidak dikirim ke server. Sistem hanya menyimpan representasi numerik wajah terenkripsi.</p>
+            <p class="face-privacy-note">Saat presensi, diam sampai hasil scan muncul. Gambar video tidak dikirim ke server; sistem hanya menyimpan representasi numerik wajah terenkripsi.</p>
         </div>
     </div>
 </section>

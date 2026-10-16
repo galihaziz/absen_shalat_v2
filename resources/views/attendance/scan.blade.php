@@ -14,7 +14,7 @@
     <p class="qr-scan-mode-hint" id="qrScanModeHint">Mode Umum: QR siswa mencatat kehadiran.</p>
     <div class="qr-scan-layout">
         <div class="qr-scan-camera-column">
-            <div class="qr-scan-viewport">
+            <div class="qr-scan-viewport" id="qrScanViewport">
                 <video id="qrScanVideo" muted playsinline aria-label="Kamera pemindai QR"></video>
                 <div class="qr-scan-frame" aria-hidden="true"></div>
             </div>
@@ -28,7 +28,12 @@
             <p id="qrScanStatus" role="status" aria-live="polite">{{ $scanClosed ? 'Waktu scan tersedia pukul '.$scanStartTime.' sampai '.$scanEndTime.'.' : 'Siap memindai QR hari ini.' }}</p>
             <p class="qr-last-scan" id="qrLastScan" hidden></p>
             <div id="qrScanResult" class="qr-scan-result" hidden>
-                <h2 id="qrStudentName"></h2>
+                <div class="qr-scan-result-heading">
+                    <span class="qr-scan-success-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false"><path d="m5 12.5 4.2 4.2L19 7"></path></svg>
+                    </span>
+                    <h2 id="qrStudentName"></h2>
+                </div>
                 <p id="qrStudentInduk"></p>
                 <p id="qrStudentClass"></p>
                 <p id="qrStudentScanDate"></p>
@@ -77,15 +82,30 @@ qrScanModeButtons.forEach((button) => button.addEventListener('click', () => {
 const scanTimestamp = document.getElementById('qrStudentScanDate');
 const lastScanLabel = document.getElementById('qrLastScan');
 const scanStatus = document.getElementById('qrScanStatus');
+const qrCameraViewport = document.getElementById('qrScanViewport');
+const qrResultPanel = document.getElementById('qrScanResult');
 new MutationObserver(() => {
     if (!scanTimestamp.textContent.trim()) return;
     lastScanLabel.textContent = `Scan berhasil terakhir: ${scanTimestamp.textContent.replace('Tanggal ', '')}`;
     lastScanLabel.hidden = false;
 }).observe(scanTimestamp, {childList: true, characterData: true, subtree: true});
 new MutationObserver(() => {
-    const isLoading = /Memeriksa|Meminta akses/.test(scanStatus.textContent);
+    const statusMessage = scanStatus.textContent.trim();
+    const isLoading = /Memeriksa|Meminta akses/.test(statusMessage);
+    const isSuccess = /^(Berhasil dicatat|Sudah tercatat)$/.test(statusMessage);
     scanStatus.classList.toggle('loading-feedback', isLoading);
     scanStatus.classList.toggle('is-loading', isLoading);
+    scanStatus.classList.toggle('is-success', isSuccess);
+    if (isSuccess) {
+        qrCameraViewport.classList.remove('is-success');
+        qrResultPanel.classList.remove('is-entering');
+        void qrResultPanel.offsetWidth;
+        qrCameraViewport.classList.add('is-success');
+        qrResultPanel.classList.add('is-entering');
+    } else {
+        qrCameraViewport.classList.remove('is-success');
+        qrResultPanel.classList.remove('is-entering');
+    }
 }).observe(scanStatus, {childList: true, characterData: true, subtree: true});
 </script>
 @endpush

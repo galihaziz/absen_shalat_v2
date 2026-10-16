@@ -1,6 +1,6 @@
 <?php
 
-#by galih
+#by galih aziz wahyudi
 
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\FaceAttendanceController;
@@ -66,6 +66,9 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('role:admin,kesiswaan')->group(function () {
         Route::get('/data_siswa', [StudentController::class, 'index'])->name('students.index');
+        Route::post('/data_siswa/jurusan', [StudentController::class, 'storeMajorGroup'])->name('students.majors.store');
+        Route::put('/data_siswa/jurusan/{majorGroup}', [StudentController::class, 'updateMajorGroup'])->where('majorGroup', '[A-Za-z0-9-]+')->name('students.majors.update');
+        Route::delete('/data_siswa/jurusan/{majorGroup}', [StudentController::class, 'destroyMajorGroup'])->where('majorGroup', '[A-Za-z0-9-]+')->name('students.majors.destroy');
         Route::get('/data_siswa/kartu/manual', [StudentController::class, 'qrSelection'])->name('students.qr.selection');
         Route::post('/data_siswa', [StudentController::class, 'store'])->name('students.store');
         Route::post('/data_siswa/foto', [StudentController::class, 'storePhoto'])->name('students.photo.store');

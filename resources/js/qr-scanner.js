@@ -27,7 +27,7 @@ if (panel) {
             return;
         }
         if (processing) return;
-
+        processing = true;
         processing = true;
         setStatus('Memeriksa data siswa...');
         try {
@@ -51,7 +51,8 @@ if (panel) {
             document.getElementById('qrStudentScanDate').textContent = `Tanggal ${payload.tanggal} · Jam ${payload.waktu_scan}`;
             document.getElementById('qrAttendanceMessage').textContent = payload.message;
             resultPanel.hidden = false;
-            setStatus(payload.already_recorded ? 'Sudah tercatat' : 'Berhasil dicatat');
+            const statusMessage = payload.already_recorded ? 'Sudah tercatat' : 'Berhasil dicatat';
+            setStatus(statusMessage);
         } catch (error) {
             setStatus(error.message || 'Kehadiran gagal dicatat. Coba lagi.', true);
         } finally {

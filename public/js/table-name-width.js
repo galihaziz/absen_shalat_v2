@@ -27,9 +27,9 @@
         if (!wrapper) return;
 
         const isAttendance = table.classList.contains('attendance-table');
-        const min = isAttendance ? 110 : 130;
-        const max = compactViewport ? 280 : 380;
-        const defaultWidth = isAttendance && compactViewport ? 142 : 220;
+        const min = compactViewport ? 70 : (isAttendance ? 110 : 130);
+        const max = compactViewport ? 150 : 380;
+        const defaultWidth = compactViewport ? (isAttendance ? 96 : 110) : (isAttendance ? 142 : 220);
         const storageKey = `rekap-name-width:${window.location.pathname}:${tableIndex}`;
         const savedWidth = Number.parseInt(localStorage.getItem(storageKey), 10);
         const initialWidth = Number.isFinite(savedWidth)

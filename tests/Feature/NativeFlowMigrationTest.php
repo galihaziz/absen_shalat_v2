@@ -8,6 +8,7 @@ use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\Student;
 use AbsenShalat\Models\User;
 use App\Services\StudentCardPhotoProcessor;
+use App\Services\MajorCatalog;
 use App\Services\StudentQrCodeGenerator;
 use Endroid\QrCode\Encoding\Encoding;
 use Endroid\QrCode\ErrorCorrectionLevel;
@@ -25,6 +26,7 @@ use Illuminate\Support\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
 
@@ -96,7 +98,10 @@ class NativeFlowMigrationTest extends TestCase
     public function test_all_authenticated_roles_can_open_qr_scanner(): void
     {
         foreach (['admin', 'kesiswaan', 'absensi'] as $role) {
-            $this->actingAs($this->makeUser($role))->get('/scan-qr')->assertOk()->assertSee('Scan QR');
+            $this->actingAs($this->makeUser($role))->get('/scan-qr')->assertOk()
+                ->assertSee('Scan QR')
+                ->assertSee('qrScanViewport')
+                ->assertSee('qr-scan-success-icon');
         }
     }
 
@@ -520,12 +525,31 @@ class NativeFlowMigrationTest extends TestCase
             'induk' => '7654301', 'nama' => 'Template Uji', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
         ]);
         $this->get('/data_siswa/'.$student->id.'/qr')
-            ->assertSee('qr-student-card-template')->assertSee('height: 85.6mm;', false);
+            ->assertSee('qr-student-card-template')
+            ->assertSee('qr-student-card--front')
+            ->assertSee('qr-student-card--back')
+            ->assertSee('qr-student-card-cutline')
+            ->assertSee('qr-student-card-spacer')
+            ->assertSee('qr-student-details')
+            ->assertSee('Template Uji')
+            ->assertSee('7654301')
+            ->assertDontSee('Nama')
+            ->assertDontSee('Induk')
+            ->assertDontSee('Jurusan')
+            ->assertDontSee('Kelas');
+        $pdfWithoutPhoto = $this->get('/data_siswa/'.$student->id.'/qr.pdf')->assertOk()->getContent();
+        preg_match_all('/\/Subtype\s*\/Image\b/', $pdfWithoutPhoto, $imagesWithoutPhoto);
+
+        Storage::disk('local')->put('foto-siswa/765/7654301.jpg', UploadedFile::fake()->image('foto.jpg')->getContent());
         $pdf = $this->get('/data_siswa/'.$student->id.'/qr.pdf')
             ->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        preg_match_all('/\/Subtype\s*\/Image\b/', $pdf->getContent(), $pdfImages);
+        $this->assertGreaterThan(count($imagesWithoutPhoto[0]), count($pdfImages[0]));
         preg_match('/\/MediaBox\s*\[0\.000 0\.000 ([\d.]+) ([\d.]+)\]/', $pdf->getContent(), $pageSize);
-        $this->assertEqualsWithDelta(53.98 * 72 / 25.4, (float) $pageSize[1], 0.1);
-        $this->assertEqualsWithDelta(85.6 * 72 / 25.4, (float) $pageSize[2], 0.1);
+        $this->assertEqualsWithDelta(110.96 * 72 / 25.4, (float) $pageSize[1], 0.1);
+        $this->assertEqualsWithDelta(87.6 * 72 / 25.4, (float) $pageSize[2], 0.1);
+        preg_match_all('/\/Type\s*\/Page\b/', $pdf->getContent(), $pages);
+        $this->assertCount(1, $pages[0]);
 
         $this->delete('/template_kartu')->assertRedirect(route('student-card-templates.index'));
         $this->assertFalse(Storage::disk('local')->exists($templatePath));
@@ -553,12 +577,13 @@ class NativeFlowMigrationTest extends TestCase
         $this->actingAs($admin)
             ->get('/data_siswa/'.$student->id.'/qr')
             ->assertOk()->assertSee('Siswa QR Uji')->assertSee('1234567890')->assertSee('AKL/AK')->assertSee('Cetak Kartu')
+            ->assertSee('download="QR-1234567890.pdf"', false)
             ->assertDontSee('Nomor induk:')->assertDontSee('Rombel:')->assertDontSee('X AKL 1')
-            ->assertSee('QR terpisah')->assertSee('class="qr-standalone-image"', false);
+            ->assertDontSee('QR terpisah')->assertDontSee('class="qr-standalone-image"', false);
 
         $cardHtml = $this->get('/data_siswa/'.$student->id.'/qr')->getContent();
         $this->assertLessThan(strpos($cardHtml, 'class="qr-student-code"'), strpos($cardHtml, 'class="qr-student-details"'));
-        $this->assertStringContainsString('class="qr-standalone-image"', $cardHtml);
+        $this->assertStringNotContainsString('class="qr-standalone-image"', $cardHtml);
 
         $response = $this->get('/data_siswa/'.$student->id.'/qr.svg')
             ->assertOk()->assertHeader('Content-Type', 'image/svg+xml');
@@ -786,14 +811,15 @@ class NativeFlowMigrationTest extends TestCase
             ->assertHeader('Content-Disposition', 'attachment; filename="QR-2345678.pdf"');
 
         $this->assertStringStartsWith('%PDF', $response->getContent());
+        $this->assertMatchesRegularExpression('/\/Subtype\s*\/Image\b/', $response->getContent());
         preg_match('/\/MediaBox\s*\[0\.000 0\.000 ([\d.]+) ([\d.]+)\]/', $response->getContent(), $pageSize);
-        $this->assertEqualsWithDelta(53.98 * 72 / 25.4, (float) $pageSize[1], 0.1);
-        $this->assertEqualsWithDelta(85.60 * 72 / 25.4, (float) $pageSize[2], 0.1);
+        $this->assertEqualsWithDelta(110.96 * 72 / 25.4, (float) $pageSize[1], 0.1);
+        $this->assertEqualsWithDelta(87.6 * 72 / 25.4, (float) $pageSize[2], 0.1);
         preg_match_all('/\/Type\s*\/Page\b/', $response->getContent(), $pages);
         $this->assertCount(1, $pages[0]);
     }
 
-    public function test_selected_students_are_tiled_nine_per_a4_page(): void
+    public function test_selected_students_are_printed_as_foldable_pairs_on_a4_landscape(): void
     {
         Storage::fake('local');
         $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
@@ -810,12 +836,12 @@ class NativeFlowMigrationTest extends TestCase
             ->assertHeader('Content-Disposition', 'attachment; filename="Kartu-Siswa-Terpilih.pdf"');
 
         preg_match_all('/\/Type\s*\/Page\b/', $response->getContent(), $pages);
-        $this->assertCount(2, $pages[0]);
+        $this->assertCount(3, $pages[0]);
         preg_match_all('/\/MediaBox\s*\[0\.000 0\.000 ([\d.]+) ([\d.]+)\]/', $response->getContent(), $pageSizes, PREG_SET_ORDER);
         $this->assertNotEmpty($pageSizes);
         foreach ($pageSizes as $pageSize) {
-            $this->assertEqualsWithDelta(210 * 72 / 25.4, (float) $pageSize[1], 0.1);
-            $this->assertEqualsWithDelta(297 * 72 / 25.4, (float) $pageSize[2], 0.1);
+            $this->assertEqualsWithDelta(297 * 72 / 25.4, (float) $pageSize[1], 0.1);
+            $this->assertEqualsWithDelta(210 * 72 / 25.4, (float) $pageSize[2], 0.1);
         }
     }
 
@@ -847,19 +873,19 @@ class NativeFlowMigrationTest extends TestCase
             'scope' => 'class', 'classroom_id' => $classroom->id,
         ])->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="Kartu-Siswa-X-PPLG-1.pdf"');
         preg_match_all('/\/Type\s*\/Page\b/', $classPdf->getContent(), $classPages);
-        $this->assertCount(1, $classPages[0]);
+        $this->assertCount(3, $classPages[0]);
 
         $gradePdf = $this->post('/data_siswa/qr/cetak-massal', [
             'scope' => 'grade', 'grade' => 'X',
         ])->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="Kartu-Siswa-Kelas-X.pdf"');
         preg_match_all('/\/Type\s*\/Page\b/', $gradePdf->getContent(), $gradePages);
-        $this->assertCount(2, $gradePages[0]);
+        $this->assertCount(3, $gradePages[0]);
 
         $majorPdf = $this->post('/data_siswa/qr/cetak-massal', [
             'scope' => 'major', 'major' => 'PPLG/RPL',
         ])->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="Kartu-Siswa-PPLG-RPL.pdf"');
         preg_match_all('/\/Type\s*\/Page\b/', $majorPdf->getContent(), $majorPages);
-        $this->assertCount(2, $majorPages[0]);
+        $this->assertCount(3, $majorPages[0]);
     }
 
     public function test_manual_qr_selection_has_its_own_page_and_batch_limit_is_enforced(): void
@@ -908,22 +934,26 @@ class NativeFlowMigrationTest extends TestCase
 
         $this->assertGuest();
         $this->get('/siswa/kartu')->assertOk()
-            ->assertSee('Siswa Portal Pertama')->assertSee('1234501')->assertSee('PS/BD')
+            ->assertSee('Siswa Portal Pertama')->assertSee('1234501')->assertSee('PS/BR/BD')
             ->assertDontSee('XII PS 1')->assertDontSee('Nomor induk:')
             ->assertDontSee('Siswa Portal Kedua')->assertSee('data:image/jpeg;base64,', false)
-            ->assertSee('height: 85.6mm;', false)
+            ->assertSee('qr-student-card--front')
+            ->assertSee('qr-student-card--back')
             ->assertSee('data:image/svg+xml;base64,', false)
             ->assertSee(route('student.portal.pdf'), false)->assertSee(route('student.portal.pin.edit'), false)
-            ->assertSee('Keluar')->assertSee('QR terpisah');
+            ->assertSee('Keluar')->assertDontSee('QR terpisah');
         $cardHtml = $this->get('/siswa/kartu')->getContent();
         $this->assertLessThan(strpos($cardHtml, 'class="qr-student-code"'), strpos($cardHtml, 'class="qr-student-details"'));
         $pdf = $this->get('/siswa/kartu/pdf')->assertOk()
             ->assertHeader('Content-Type', 'application/pdf')
             ->assertHeader('Content-Disposition', 'attachment; filename="Kartu-1234501.pdf"');
         $this->assertStringStartsWith('%PDF', $pdf->getContent());
+        $this->assertMatchesRegularExpression('/\/Subtype\s*\/Image\b/', $pdf->getContent());
         preg_match('/\/MediaBox\s*\[0\.000 0\.000 ([\d.]+) ([\d.]+)\]/', $pdf->getContent(), $pageSize);
-        $this->assertEqualsWithDelta(53.98 * 72 / 25.4, (float) $pageSize[1], 0.1);
-        $this->assertEqualsWithDelta(85.6 * 72 / 25.4, (float) $pageSize[2], 0.1);
+        $this->assertEqualsWithDelta(110.96 * 72 / 25.4, (float) $pageSize[1], 0.1);
+        $this->assertEqualsWithDelta(87.6 * 72 / 25.4, (float) $pageSize[2], 0.1);
+        preg_match_all('/\/Type\s*\/Page\b/', $pdf->getContent(), $pages);
+        $this->assertCount(1, $pages[0]);
         $this->get('/siswa/pin')->assertOk()->assertSee('Ubah PIN');
         $this->post('/siswa/pin', [
             'current_pin' => 'siswa123',
@@ -1004,6 +1034,114 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertDatabaseHas('siswa', [
             'id' => $promotedStudent->id, 'induk' => '6666', 'id_kelas' => $newClassroom->id, 'is_alumni' => false,
         ]);
+    }
+
+    public function test_student_import_batches_database_work_for_large_workbooks(): void
+    {
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('X IPA 1');
+        $sheet->fromArray([['Nomor Induk', 'Nama', 'Jenis Kelamin']]);
+        for ($index = 1; $index <= 120; $index++) {
+            $sheet->fromArray([[(string) (90000 + $index), 'Siswa Impor '.$index, 'L']], null, 'A'.($index + 1));
+        }
+        $path = tempnam(sys_get_temp_dir(), 'student-import-batch-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $countQueries = false;
+        $studentQueries = 0;
+        DB::listen(static function ($query) use (&$countQueries, &$studentQueries): void {
+            if ($countQueries && preg_match('/(?:siswa|kelas)/i', $query->sql) === 1) {
+                $studentQueries++;
+            }
+        });
+        $countQueries = true;
+
+        $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+        $countQueries = false;
+
+        $this->assertSame(120, Student::query()->where('nama', 'like', 'Siswa Impor %')->count());
+        $this->assertLessThanOrEqual(10, $studentQueries, 'Import should use a bounded number of database queries.');
+        $this->assertTrue(Hash::check('siswa123', (string) Student::query()->where('induk', '90001')->value('portal_pin')));
+    }
+
+    public function test_admin_can_import_legacy_xls_workbooks(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'student-import-');
+        $workbook = new Spreadsheet;
+        $workbook->getActiveSheet()->setTitle('XI IPA 1');
+        $workbook->getActiveSheet()->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin'],
+            ['9911', 'Siswa XLS', 'L'],
+        ]);
+        (new Xls($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xls', $content),
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+
+        $this->assertDatabaseHas('siswa', [
+            'induk' => '9911', 'nama' => 'Siswa XLS', 'jenis_kelamin' => 'L',
+        ]);
+    }
+
+    public function test_staff_can_manage_major_groups_and_related_majors(): void
+    {
+        $admin = $this->makeUser('admin');
+        $classroom = Classroom::query()->create(['nama' => 'X PPLG 1']);
+        $this->actingAs($admin)->get('/data_siswa')
+            ->assertOk()
+            ->assertSee('Kelola jurusan')
+            ->assertSee('Nama jurusan')
+            ->assertSee('Jurusan terkait')
+            ->assertSee('name="majors[]"', false)
+            ->assertSee('data-major-add', false)
+            ->assertSee('<option value="PPLG" selected>PPLG</option>', false)
+            ->assertSee('<option value="RPL" selected>RPL</option>', false);
+
+        $this->put('/data_siswa/jurusan/pplg-rpl', [
+            'group_id' => 'pplg-rpl',
+            'name' => 'Rekayasa Perangkat Lunak',
+            'majors' => ['PPLG', 'RPL'],
+        ])
+            ->assertRedirect('/data_siswa')
+            ->assertSessionHas('status', 'Grup jurusan berhasil diperbarui.');
+
+        $this->assertSame('Rekayasa Perangkat Lunak', $classroom->majorLabel());
+        Classroom::query()->create(['nama' => 'X MM 1']);
+        $this->post('/data_siswa/jurusan', [
+            'name' => 'Multimedia',
+            'majors' => ['MM', ''],
+        ])->assertRedirect('/data_siswa')
+            ->assertSessionHas('status', 'Grup jurusan berhasil ditambahkan.');
+        $multimediaClassroom = Classroom::query()->where('nama', 'X MM 1')->firstOrFail();
+        $this->assertSame('Multimedia', $multimediaClassroom->majorLabel());
+
+        $setting = json_decode(
+            (string) \AbsenShalat\Models\AppSetting::query()->where('key', MajorCatalog::SETTING_KEY)->value('value'),
+            true
+        );
+        $this->assertContains(
+            ['id' => 'pplg-rpl', 'name' => 'Rekayasa Perangkat Lunak', 'majors' => ['PPLG', 'RPL']],
+            $setting
+        );
+
+        $this->delete('/data_siswa/jurusan/'.collect($setting)->firstWhere('name', 'Multimedia')['id'])
+            ->assertRedirect('/data_siswa')
+            ->assertSessionHas('status', 'Grup jurusan berhasil dihapus.');
+        $this->assertSame('MM', $multimediaClassroom->fresh()->majorLabel());
+
+        $this->get('/data_siswa')->assertOk()
+            ->assertSee('Rekayasa Perangkat Lunak')
+            ->assertSee('PPLG - RPL')
+            ->assertSee('<option value="PPLG" selected>PPLG</option>', false)
+            ->assertSee('<option value="RPL" selected>RPL</option>', false);
     }
 
     public function test_alumni_are_not_eligible_for_attendance_scan(): void

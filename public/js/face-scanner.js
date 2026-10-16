@@ -4,24 +4,13 @@
 
     const modelUrl = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@v0.22.2/weights';
     const video = document.querySelector('#faceCameraVideo');
-    const qualityCanvas = document.createElement('canvas');
-    qualityCanvas.width = 48;
-    qualityCanvas.height = 36;
-    const qualityContext = qualityCanvas.getContext('2d', { willReadFrequently: true });
-    const memory = navigator.deviceMemory || 4;
-    const cores = navigator.hardwareConcurrency || 4;
-    const lowPowerDevice = memory <= 4 || cores <= 4;
-    const detectorInputSize = lowPowerDevice ? 128 : 160;
-    const scanInterval = lowPowerDevice ? 280 : 180;
-    const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: detectorInputSize,
-        scoreThreshold: 0.45,
-    });
     const overlay = document.querySelector('#faceCameraOverlay');
     const cameraToggle = document.querySelector('#faceCameraToggle');
+    const cameraSourceToggle = document.querySelector('#faceCameraSourceToggle');
     const cameraStop = document.querySelector('#faceCameraStop');
     const placeholder = document.querySelector('#faceCameraPlaceholder');
     const status = document.querySelector('#faceScanStatus');
+    const detectorMetrics = document.querySelector('#faceDetectorMetrics');
     const registrationFields = document.querySelector('#faceRegistrationFields');
     const sampleCount = document.querySelector('#faceSampleCount');
     const poseStep = document.querySelector('#facePoseStep');
@@ -30,7 +19,29 @@
     const registrationRetry = document.querySelector('#faceRegistrationRetry');
     const result = document.querySelector('#faceScanResult');
     const attendanceTypeHint = document.querySelector('#faceAttendanceTypeHint');
-    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrf = csrfMeta ? csrfMeta.content : '';
+
+    if (!video || !overlay || !cameraToggle || !placeholder || !status) {
+        return;
+    }
+
+    const cameraViewport = video.parentElement;
+    const qualityCanvas = document.createElement('canvas');
+    qualityCanvas.width = 48;
+    qualityCanvas.height = 36;
+    const qualityContext = qualityCanvas.getContext('2d', { willReadFrequently: true });
+    const memory = navigator.deviceMemory || 4;
+    const cores = navigator.hardwareConcurrency || 4;
+    const lowPowerDevice = memory <= 4 || cores <= 4;
+    const detectorInputSize = lowPowerDevice ? 128 : 160;
+    const scanInterval = lowPowerDevice ? 180 : 120;
+    const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+        inputSize: detectorInputSize,
+        scoreThreshold: 0.45,
+    });
+    const autoStartCamera = panel.dataset.cameraAutoStart === 'true';
+    const attendanceTypeButtons = Array.from(document.querySelectorAll('[data-attendance-type]'));
     const attendanceSamples = [];
     const registeredDescriptors = [];
     const poses = [
@@ -42,6 +53,7 @@
     ];
     let stream = null;
     let modelsPromise = null;
+    let preferredFacing = 'user';
     let mode = panel.dataset.adminRegistration === 'true' ? 'registration' : 'attendance';
     let attendanceType = 'umum';
     let busy = false;
@@ -49,6 +61,7 @@
     let cameraStarting = false;
     let stableDetections = 0;
     let stablePoseDetections = 0;
+    let missingFaceDetections = 0;
     let frontPitch = null;
     let poseIndex = 0;
     let registrationComplete = false;
@@ -56,10 +69,30 @@
     let landmarkModelPromise = null;
     let detectionTimer = null;
     let detectionLoopRunning = false;
+    let overlayAnimationFrame = null;
+    let targetFaceBox = null;
+    let displayedFaceBox = null;
+    let previewIsHorizontallyFlipped = false;
+    let lastOverlayFrameAt = 0;
+    let metricSamplesSinceUpdate = 0;
+    const inferenceSamples = [];
 
     const setStatus = (message, isError = false) => {
+        if (!status) return;
         status.textContent = message;
         status.classList.toggle('error-feedback', isError);
+    };
+
+    const canUseCamera = () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setStatus('Browser ini tidak mendukung akses kamera. Gunakan Chrome atau Edge versi terbaru.', true);
+            return false;
+        }
+        if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+            setStatus('Halaman harus dibuka lewat HTTPS atau localhost agar kamera bisa dipakai.', true);
+            return false;
+        }
+        return true;
     };
 
     const clearRegistration = () => {
@@ -88,13 +121,13 @@
         });
         attendanceSamples.splice(0, attendanceSamples.length);
         stableDetections = 0;
+        missingFaceDetections = 0;
         scanLatched = false;
         result.hidden = true;
         clearRegistration();
         setStatus(mode === 'registration' ? 'Ikuti arahan pose; wajah akan tersimpan otomatis.' : 'Arahkan kamera ke satu wajah untuk scan otomatis.');
     };
 
-    const attendanceTypeButtons = Array.from(document.querySelectorAll('[data-attendance-type]'));
     const setAttendanceType = (nextType) => {
         attendanceType = nextType;
         attendanceTypeButtons.forEach((button) => {
@@ -109,6 +142,7 @@
         }
         attendanceSamples.splice(0, attendanceSamples.length);
         stableDetections = 0;
+        missingFaceDetections = 0;
         scanLatched = false;
         result.hidden = true;
     };
@@ -119,6 +153,26 @@
             modelsPromise = faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
         }
         return modelsPromise;
+    };
+
+    const updateDetectorMetrics = (duration, landmarkDuration) => {
+        const trackSettings = stream?.getVideoTracks()[0]?.getSettings() || {};
+        inferenceSamples.push({ duration, landmarkDuration });
+        if (inferenceSamples.length > 20) inferenceSamples.shift();
+        metricSamplesSinceUpdate++;
+        if (inferenceSamples.length < 5 || metricSamplesSinceUpdate < 5) return;
+        metricSamplesSinceUpdate = 0;
+
+        const durations = inferenceSamples.map((sample) => sample.duration).sort((left, right) => left - right);
+        const average = durations.reduce((total, value) => total + value, 0) / durations.length;
+        const p95 = durations[Math.min(durations.length - 1, Math.ceil(durations.length * 0.95) - 1)];
+        const averageLandmarks = inferenceSamples.reduce((total, sample) => total + sample.landmarkDuration, 0) / inferenceSamples.length;
+        const cameraResolution = trackSettings.width && trackSettings.height
+            ? `${trackSettings.width}×${trackSettings.height}`
+            : 'resolusi tidak tersedia';
+        const cameraRate = trackSettings.frameRate ? ` · ${Math.round(trackSettings.frameRate)} fps` : '';
+        detectorMetrics.hidden = false;
+        detectorMetrics.textContent = `Deteksi rata-rata ${Math.round(average)} ms (P95 ${Math.round(p95)} ms; landmark ${Math.round(averageLandmarks)} ms) · kamera ${cameraResolution}${cameraRate}`;
     };
 
     const loadLandmarkModel = () => {
@@ -145,28 +199,94 @@
     };
 
     const clearOverlay = () => {
+        if (overlayAnimationFrame !== null) {
+            window.cancelAnimationFrame(overlayAnimationFrame);
+            overlayAnimationFrame = null;
+        }
+        targetFaceBox = null;
+        displayedFaceBox = null;
+        lastOverlayFrameAt = 0;
         const context = overlay.getContext('2d');
+        context.setTransform(1, 0, 0, 1, 0, 0);
         context.clearRect(0, 0, overlay.width, overlay.height);
     };
 
     const drawDetection = (detection) => {
-        const width = video.videoWidth;
-        const height = video.videoHeight;
-        if (!width || !height) return;
-        if (overlay.width !== width || overlay.height !== height) {
-            overlay.width = width;
-            overlay.height = height;
+        if (!detection) {
+            clearOverlay();
+            return;
         }
+        const { x, y, width, height } = detection.box || detection.detection.box;
+        targetFaceBox = { x, y, width, height };
+        if (!displayedFaceBox) {
+            displayedFaceBox = { ...targetFaceBox };
+        }
+        startOverlayAnimation();
+    };
+
+    const renderFaceOverlay = () => {
+        overlayAnimationFrame = null;
+        if (!stream || document.hidden) return;
+
+        const viewport = overlay.parentElement;
+        const viewportWidth = viewport.clientWidth;
+        const viewportHeight = viewport.clientHeight;
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+        if (!viewportWidth || !viewportHeight || !videoWidth || !videoHeight) {
+            overlayAnimationFrame = window.requestAnimationFrame(renderFaceOverlay);
+            return;
+        }
+
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        const canvasWidth = Math.round(viewportWidth * pixelRatio);
+        const canvasHeight = Math.round(viewportHeight * pixelRatio);
+        if (overlay.width !== canvasWidth || overlay.height !== canvasHeight) {
+            overlay.width = canvasWidth;
+            overlay.height = canvasHeight;
+        }
+
         const context = overlay.getContext('2d');
-        context.clearRect(0, 0, width, height);
-        if (!detection) return;
-        const { x, y, width: boxWidth, height: boxHeight } = detection.box || detection.detection.box;
-        context.strokeStyle = '#62e5c0';
-        context.lineWidth = Math.max(3, width / 240);
-        context.shadowColor = 'rgba(59, 225, 181, .65)';
-        context.shadowBlur = 12;
-        context.strokeRect(x, y, boxWidth, boxHeight);
-        context.shadowBlur = 0;
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        context.clearRect(0, 0, viewportWidth, viewportHeight);
+
+        if (targetFaceBox && displayedFaceBox) {
+            const frameTime = performance.now();
+            const frameDuration = lastOverlayFrameAt ? Math.min(frameTime - lastOverlayFrameAt, 50) : 16;
+            const centerDeltaX = (targetFaceBox.x + targetFaceBox.width / 2) - (displayedFaceBox.x + displayedFaceBox.width / 2);
+            const centerDeltaY = (targetFaceBox.y + targetFaceBox.height / 2) - (displayedFaceBox.y + displayedFaceBox.height / 2);
+            const movement = Math.hypot(centerDeltaX, centerDeltaY);
+            const fastMovementThreshold = Math.max(videoWidth, videoHeight) * 0.035;
+            const smoothingTime = movement > fastMovementThreshold ? 24 : 55;
+            const smoothing = 1 - Math.exp(-frameDuration / smoothingTime);
+            displayedFaceBox.x += (targetFaceBox.x - displayedFaceBox.x) * smoothing;
+            displayedFaceBox.y += (targetFaceBox.y - displayedFaceBox.y) * smoothing;
+            displayedFaceBox.width += (targetFaceBox.width - displayedFaceBox.width) * smoothing;
+            displayedFaceBox.height += (targetFaceBox.height - displayedFaceBox.height) * smoothing;
+            lastOverlayFrameAt = frameTime;
+
+            const scale = Math.max(viewportWidth / videoWidth, viewportHeight / videoHeight);
+            const cropX = (videoWidth * scale - viewportWidth) / 2;
+            const cropY = (videoHeight * scale - viewportHeight) / 2;
+            context.strokeStyle = '#62e5c0';
+            context.lineWidth = 3;
+            context.lineJoin = 'round';
+            context.strokeRect(
+                displayedFaceBox.x * scale - cropX,
+                displayedFaceBox.y * scale - cropY,
+                displayedFaceBox.width * scale,
+                displayedFaceBox.height * scale
+            );
+            const remainingMovement = Math.max(
+                Math.abs(targetFaceBox.x - displayedFaceBox.x),
+                Math.abs(targetFaceBox.y - displayedFaceBox.y),
+                Math.abs(targetFaceBox.width - displayedFaceBox.width),
+                Math.abs(targetFaceBox.height - displayedFaceBox.height)
+            );
+            if (remainingMovement > 0.25) {
+                overlayAnimationFrame = window.requestAnimationFrame(renderFaceOverlay);
+            }
+        }
     };
 
     const imageQualityIssue = (detection) => {
@@ -230,10 +350,21 @@
 
     const detectFaces = async () => {
         if (!stream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return [];
-        const needsLandmarks = mode === 'registration' || stableDetections > 0;
+        const needsLandmarks = mode === 'registration';
         if (needsLandmarks) await loadLandmarkModel();
-        const detections = faceapi.detectAllFaces(video, detectorOptions);
-        return needsLandmarks ? detections.withFaceLandmarks() : detections;
+        const startedAt = performance.now();
+        const detectorTask = faceapi.detectAllFaces(video, detectorOptions);
+        let detections;
+        let landmarkDuration = 0;
+        if (needsLandmarks) {
+            const landmarkStartedAt = performance.now();
+            detections = await detectorTask.withFaceLandmarks();
+            landmarkDuration = performance.now() - landmarkStartedAt;
+        } else {
+            detections = await detectorTask;
+        }
+        updateDetectorMetrics(performance.now() - startedAt, landmarkDuration);
+        return detections;
     };
 
     const headPose = (landmarks) => {
@@ -246,7 +377,8 @@
         const noseX = points[30].x;
         const noseY = points[30].y;
         const mouthY = (points[51].y + points[57].y) / 2;
-        return { yaw: (noseX - eyesX) / eyeWidth, pitch: (noseY - eyesY) / (mouthY - eyesY) };
+        const yaw = (noseX - eyesX) / eyeWidth;
+        return { yaw: previewIsHorizontallyFlipped ? -yaw : yaw, pitch: (noseY - eyesY) / (mouthY - eyesY) };
     };
 
     const showResult = (message, isError = false) => {
@@ -296,11 +428,16 @@
         if (busy || scanLatched) return;
         busy = true;
         scanLatched = true;
-        setStatus('Wajah stabil. Mengambil dua sampel untuk memastikan kecocokan…');
+        result.hidden = true;
+        setStatus('Wajah terlihat jelas. Tahan posisi, pemindaian akan dimulai sebentar lagi…');
         try {
+            await new Promise((resolve) => window.setTimeout(resolve, 900));
+            setStatus('Sedang membaca wajah. Mohon jangan bergerak…');
             attendanceSamples.splice(0, attendanceSamples.length, await captureDescriptor());
-            await new Promise((resolve) => window.setTimeout(resolve, 180));
+            setStatus('Sampel pertama terbaca. Memastikan ulang wajah…');
+            await new Promise((resolve) => window.setTimeout(resolve, 350));
             attendanceSamples.push(await captureDescriptor());
+            setStatus('Pemeriksaan selesai. Mengirim hasil scan…');
             const data = await postJson(panel.dataset.attendanceEndpoint, {
                 descriptors: attendanceSamples,
                 ...(attendanceType === 'haid' ? { jenis: 'haid' } : {}),
@@ -359,8 +496,10 @@
             return;
         }
         stablePoseDetections++;
-        poseFeedback.textContent = stablePoseDetections < 2 ? 'Bagus, tahan posisi sebentar…' : 'Memeriksa cahaya dan ketajaman wajah…';
-        if (stablePoseDetections < 2) return;
+        poseFeedback.textContent = stablePoseDetections < 3
+            ? 'Posisi sudah sesuai. Tahan dulu, jangan bergerak…'
+            : 'Sedang memeriksa cahaya dan ketajaman wajah…';
+        if (stablePoseDetections < 3) return;
 
         const qualityIssue = imageQualityIssue(detection);
         if (qualityIssue) {
@@ -370,6 +509,7 @@
         }
 
         stablePoseDetections = 0;
+        poseFeedback.textContent = 'Pose pas. Sedang mengambil dua sampel wajah…';
         const poseDescriptors = [];
         try {
             poseDescriptors.push(await captureDescriptor());
@@ -383,6 +523,8 @@
             poseFeedback.textContent = 'Sampel berubah-ubah. Tahan ponsel stabil dan ulangi pose ini.';
             return;
         }
+        poseFeedback.textContent = `${poses[poseIndex].name} berhasil direkam. Bersiap untuk arahan berikutnya…`;
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
         registeredDescriptors.push(
             poseDescriptors[0].map((value, index) => (value + poseDescriptors[1][index]) / 2)
         );
@@ -399,19 +541,22 @@
     };
 
     const handleLostFace = () => {
+        missingFaceDetections++;
+        if (missingFaceDetections < 3) return;
         stableDetections = 0;
         stablePoseDetections = 0;
         if (mode === 'attendance') attendanceSamples.splice(0, attendanceSamples.length);
         if (scanLatched) {
             scanLatched = false;
-            result.hidden = true;
-            result.classList.remove('is-error');
-            setStatus('Wajah keluar dari kamera. Arahkan kembali untuk scan berikutnya.');
-        } else if (!result.hidden) {
-            result.hidden = true;
-            setStatus(mode === 'registration' ? 'Posisikan wajah di dalam kotak.' : 'Arahkan kamera ke satu wajah untuk scan otomatis.');
+            if (result.hidden) {
+                setStatus('Wajah tidak terlihat. Arahkan kembali ke kamera untuk scan berikutnya.');
+            }
+        } else if (result.hidden && !busy) {
+            setStatus(mode === 'registration'
+                ? 'Wajah belum terlihat. Posisikan wajah di tengah kotak.'
+                : 'Wajah belum terlihat. Arahkan wajah ke tengah kotak untuk scan.');
         } else if (!busy) {
-            setStatus('Posisikan satu wajah di dalam kotak.');
+            if (result.hidden) setStatus('Posisikan satu wajah di dalam kotak.');
         }
     };
 
@@ -421,6 +566,12 @@
             detectionTimer = null;
             detectLoop();
         }, delay);
+    };
+
+    const startOverlayAnimation = () => {
+        if (overlayAnimationFrame === null && stream && !document.hidden) {
+            overlayAnimationFrame = window.requestAnimationFrame(renderFaceOverlay);
+        }
     };
 
     const detectLoop = async () => {
@@ -433,6 +584,7 @@
                 drawDetection(null);
                 handleLostFace();
             } else {
+                missingFaceDetections = 0;
                 const box = detections[0];
                 drawDetection(box);
                 if (mode === 'registration') {
@@ -450,7 +602,7 @@
                             await submitAttendance();
                         }
                     }
-                    else setStatus('Wajah terdeteksi. Tahan sebentar untuk scan otomatis…');
+                    else setStatus('Wajah terlihat. Tetap diam sebentar agar hasil scan lebih tepat…');
                 }
             }
         } catch (error) {
@@ -460,38 +612,76 @@
             detectionLoopRunning = false;
             if (stream && !document.hidden) {
                 const duration = performance.now() - startedAt;
-                const adaptiveDelay = duration > 250
-                    ? Math.min(scanInterval + 180, 500)
-                    : duration > 140
-                        ? Math.min(scanInterval + 80, 360)
-                        : scanInterval;
+                const recoveryDelay = Math.min(100, duration * 0.2);
+                const adaptiveDelay = Math.max(scanInterval - duration, recoveryDelay);
                 scheduleDetection(adaptiveDelay);
             }
         }
     };
 
-    const startCamera = async () => {
-        if (stream || cameraStarting) return;
+    const updateCameraSourceLabel = () => {
+        if (!cameraSourceToggle) return;
+        const nextFacing = preferredFacing === 'user' ? 'belakang' : 'depan';
+        cameraSourceToggle.textContent = `Pindah ke kamera ${nextFacing}`;
+    };
+
+    const getCameraConstraints = (facing) => ({
+        audio: false,
+        video: {
+            facingMode: facing === 'environment' ? { ideal: 'environment' } : { ideal: 'user' },
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: lowPowerDevice ? 20 : 24, max: 30 },
+            advanced: [{ focusMode: 'continuous' }],
+        },
+    });
+
+    const stopCameraStream = () => {
+        if (detectionTimer !== null) window.clearTimeout(detectionTimer);
+        detectionTimer = null;
+        if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+        }
+        stream = null;
+        video.srcObject = null;
+        cameraViewport.classList.remove('is-front-camera');
+        previewIsHorizontallyFlipped = false;
+        detectorMetrics.hidden = true;
+        inferenceSamples.splice(0, inferenceSamples.length);
+        metricSamplesSinceUpdate = 0;
+        clearOverlay();
+        attendanceSamples.splice(0, attendanceSamples.length);
+        stableDetections = 0;
+    };
+
+    const startCamera = async (requestedFacing = preferredFacing) => {
+        if (!canUseCamera()) return;
+        if (cameraStarting) return;
+        if (stream && preferredFacing === requestedFacing) return;
         cameraStarting = true;
         cameraToggle.disabled = true;
+        if (cameraSourceToggle) cameraSourceToggle.disabled = true;
         try {
+            if (stream) {
+                stopCameraStream();
+            }
+            preferredFacing = requestedFacing;
+            updateCameraSourceLabel();
             placeholder.hidden = false;
-            setStatus('Meminta akses kamera… Izinkan akses pada prompt browser.');
-            stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                    facingMode: { ideal: 'user' },
-                    width: { ideal: 480, max: 640 },
-                    height: { ideal: 360, max: 480 },
-                    frameRate: { ideal: 15, max: 24 },
-                },
-            });
+            setStatus(`Meminta akses kamera ${preferredFacing === 'user' ? 'depan' : 'belakang'}…`);
+            stream = await navigator.mediaDevices.getUserMedia(getCameraConstraints(requestedFacing));
             video.srcObject = stream;
+            const actualFacing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+            previewIsHorizontallyFlipped = actualFacing
+                ? actualFacing === 'user'
+                : requestedFacing === 'user';
+            cameraViewport.classList.toggle('is-front-camera', previewIsHorizontallyFlipped);
             await video.play();
             placeholder.hidden = true;
             cameraStop.disabled = false;
             setStatus('Kamera aktif. Memuat model deteksi wajah…');
             await loadModels();
+            startOverlayAnimation();
             stableDetections = 0;
             setStatus('Model siap. Posisikan satu wajah di dalam kotak.');
             result.hidden = true;
@@ -499,43 +689,58 @@
             attendanceSamples.splice(0, attendanceSamples.length);
             scheduleDetection(0);
         } catch (error) {
+            if (requestedFacing === 'environment' && error.name === 'NotFoundError') {
+                setStatus('Kamera belakang tidak tersedia di perangkat ini. Beralih ke kamera depan…');
+                return startCamera('user');
+            }
             if (stream) stream.getTracks().forEach((track) => track.stop());
             stream = null;
             video.srcObject = null;
             placeholder.hidden = false;
-            cameraStop.disabled = true;
-            placeholder.querySelector('strong').textContent = 'Kamera belum aktif';
-            placeholder.querySelector('span').textContent = error.message || 'Izinkan akses kamera dan pastikan halaman dibuka melalui HTTPS atau localhost.';
+            if (cameraStop) cameraStop.disabled = true;
+            if (placeholder) {
+                const placeholderTitle = placeholder.querySelector('strong');
+                const placeholderMessage = placeholder.querySelector('span');
+                if (placeholderTitle) placeholderTitle.textContent = 'Kamera belum aktif';
+                if (placeholderMessage) placeholderMessage.textContent = error.message || 'Izinkan akses kamera dan pastikan halaman dibuka melalui HTTPS atau localhost.';
+            }
             setStatus(error.message || 'Kamera tidak dapat dibuka. Periksa izin kamera dan HTTPS/localhost.', true);
         } finally {
             cameraStarting = false;
             cameraToggle.disabled = false;
+            if (cameraSourceToggle) cameraSourceToggle.disabled = false;
         }
     };
 
-    cameraToggle.addEventListener('click', startCamera);
+    if (cameraToggle) {
+        cameraToggle.addEventListener('click', () => startCamera(preferredFacing));
+    }
+    if (cameraSourceToggle) {
+        cameraSourceToggle.addEventListener('click', () => {
+            const nextFacing = preferredFacing === 'user' ? 'environment' : 'user';
+            startCamera(nextFacing);
+        });
+    }
 
-    cameraStop.addEventListener('click', () => {
-        if (detectionTimer !== null) window.clearTimeout(detectionTimer);
-        detectionTimer = null;
-        if (stream) stream.getTracks().forEach((track) => track.stop());
-        stream = null;
-        video.srcObject = null;
-        attendanceSamples.splice(0, attendanceSamples.length);
-        stableDetections = 0;
-        cameraStop.disabled = true;
-        placeholder.hidden = false;
-        clearOverlay();
-        result.hidden = true;
-        scanLatched = false;
-        setStatus('Kamera dimatikan.');
-    });
+    if (cameraStop) {
+        cameraStop.addEventListener('click', () => {
+            stopCameraStream();
+            cameraStop.disabled = true;
+            placeholder.hidden = false;
+            clearOverlay();
+            result.hidden = true;
+            scanLatched = false;
+            setStatus('Kamera dimatikan.');
+        });
+    }
 
     document.querySelectorAll('[data-face-mode]').forEach((button) => {
         button.addEventListener('click', () => setMode(button.dataset.faceMode));
     });
 
-    registrationRetry.addEventListener('click', saveRegistration);
+    if (registrationRetry) {
+        registrationRetry.addEventListener('click', saveRegistration);
+    }
 
     attendanceTypeButtons.forEach((button) => {
         button.addEventListener('click', () => setAttendanceType(button.dataset.attendanceType));
@@ -544,6 +749,7 @@
     window.addEventListener('pagehide', () => {
         if (detectionTimer !== null) window.clearTimeout(detectionTimer);
         if (stream) stream.getTracks().forEach((track) => track.stop());
+        clearOverlay();
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -551,11 +757,21 @@
             if (detectionTimer !== null) window.clearTimeout(detectionTimer);
             detectionTimer = null;
         } else {
+            startOverlayAnimation();
             scheduleDetection(0);
         }
     });
 
+    updateCameraSourceLabel();
     setMode(mode);
     setAttendanceType(attendanceType);
-    startCamera();
+    if (autoStartCamera && canUseCamera()) {
+        window.setTimeout(() => {
+            if (cameraToggle && !cameraStarting && document.hasFocus()) {
+                startCamera();
+            }
+        }, 250);
+    } else {
+        setStatus('Kamera belum aktif. Tekan “Mulai kamera” untuk memulai scan.');
+    }
 })();

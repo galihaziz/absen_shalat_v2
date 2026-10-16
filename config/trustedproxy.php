@@ -1,5 +1,5 @@
 <?php
 
 return [
-    'proxies' => env('TRUSTED_PROXIES') ?: null,
+    'proxies' => env('TRUSTED_PROXIES', '*'),
 ];

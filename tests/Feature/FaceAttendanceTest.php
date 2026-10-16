@@ -25,7 +25,9 @@ class FaceAttendanceTest extends TestCase
             ->assertSee('Scan QR')
             ->assertSee('Scan Wajah')
             ->assertSee('face-detection-guide')
+            ->assertSee('faceDetectorMetrics')
             ->assertSee('Kamera akan dibuka otomatis')
+            ->assertSee('diam sampai hasil scan muncul')
             ->assertDontSee('faceStudentInduk');
         $this->get('/data_siswa')
             ->assertOk()
@@ -35,7 +37,9 @@ class FaceAttendanceTest extends TestCase
         $this->get(route('students.face', $student))
             ->assertOk()
             ->assertSee('Nomor induk 10001')
+            ->assertSee('Wajah belum terdaftar')
             ->assertDontSee('faceStudentInduk')
+            ->assertSee('Jangan buru-buru pindah pose')
             ->assertSee('face-detection-guide');
 
         $registrationResponse = $this->postJson(route('students.face.register', $student), [
@@ -48,7 +52,10 @@ class FaceAttendanceTest extends TestCase
         $this->assertNotEmpty($student->fresh()->faceRegistration->face_code);
         $this->get(route('students.face', $student))
             ->assertOk()
-            ->assertSee($student->fresh()->faceRegistration->face_code);
+            ->assertSee($student->fresh()->faceRegistration->face_code)
+            ->assertSee('Wajah sudah terdaftar')
+            ->assertSee('data-camera-auto-start="false"', false)
+            ->assertSee('Kamera belum aktif');
 
         $this->delete(route('students.face.delete', $student))->assertRedirect(route('students.face', $student));
         $this->assertDatabaseMissing('student_face_registrations', ['student_id' => $student->id]);
@@ -76,6 +83,9 @@ class FaceAttendanceTest extends TestCase
             ->assertOk()
             ->assertSee('10002')
             ->assertSee('Daftarkan wajah')
+            ->assertSee('Wajah belum terdaftar')
+            ->assertDontSee('>Presensi</button>', false)
+            ->assertSee('data-camera-auto-start="true"', false)
             ->assertDontSee('faceStudentInduk')
             ->assertSee('face-detection-guide');
 
@@ -93,6 +103,14 @@ class FaceAttendanceTest extends TestCase
             ])->assertOk();
 
         $this->assertDatabaseHas('student_face_registrations', ['student_id' => $student->id]);
+        $this->withSession(['student_portal_id' => $student->id])
+            ->get(route('student.portal.face'))
+            ->assertOk()
+            ->assertSee('data-camera-auto-start="false"', false)
+            ->assertSee('Kamera belum aktif')
+            ->assertSee('Wajah sudah terdaftar')
+            ->assertSee('Mulai kamera')
+            ->assertDontSee('>Presensi</button>', false);
 
         $this->withSession(['student_portal_id' => $student->id])
             ->delete(route('student.portal.face.delete'))

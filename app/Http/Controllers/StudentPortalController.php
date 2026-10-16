@@ -23,6 +23,8 @@ class StudentPortalController extends Controller
 
     private const CARD_HEIGHT_MM = 85.6;
 
+    private const CARD_FOLD_GAP_MM = 1;
+
     public function __construct(
         private readonly StudentQrCodeGenerator $qrCodeGenerator,
         private readonly StudentCardPhotoProcessor $photoProcessor,
@@ -120,8 +122,8 @@ class StudentPortalController extends Controller
         $pdf->setPaper([
             0,
             0,
-            self::CARD_WIDTH_MM * 72 / 25.4,
-            self::CARD_HEIGHT_MM * 72 / 25.4,
+            (self::CARD_WIDTH_MM * 2 + self::CARD_FOLD_GAP_MM + 2) * 72 / 25.4,
+            (self::CARD_HEIGHT_MM + 2) * 72 / 25.4,
         ]);
         $pdf->render();
 
@@ -147,9 +149,7 @@ class StudentPortalController extends Controller
         }
 
         $qrDataUri = 'data:image/svg+xml;base64,'.base64_encode($this->qrCodeGenerator->svg($student->induk));
-        $templateCardHeightMm = ! $forPdf && $templateDataUri !== null ? self::CARD_HEIGHT_MM : null;
-
-        return compact('student', 'photoDataUri', 'qrDataUri', 'templateDataUri', 'templateCardHeightMm');
+        return compact('student', 'photoDataUri', 'qrDataUri', 'templateDataUri');
     }
 
     public function destroy(Request $request): RedirectResponse

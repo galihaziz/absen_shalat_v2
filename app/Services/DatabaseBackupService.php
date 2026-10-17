@@ -30,7 +30,7 @@ class DatabaseBackupService
         'student_face_registrations',
     ];
 
-    public function createBackup(int $actorId, string $action = 'backup'): object
+    public function createBackup(?int $actorId, string $action = 'backup'): object
     {
         $filename = Str::uuid().'.backup';
         $path = 'private/backups/'.$filename;
@@ -157,7 +157,7 @@ class DatabaseBackupService
     }
 
     private function log(
-        int $actorId,
+        ?int $actorId,
         string $action,
         string $status,
         ?int $archiveId,

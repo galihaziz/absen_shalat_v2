@@ -35,7 +35,7 @@
     const cores = navigator.hardwareConcurrency || 4;
     const lowPowerDevice = memory <= 4 || cores <= 4;
     const detectorInputSize = lowPowerDevice ? 128 : 160;
-    const scanInterval = lowPowerDevice ? 180 : 120;
+    const scanInterval = lowPowerDevice ? 300 : 220;
     const detectorOptions = new faceapi.TinyFaceDetectorOptions({
         inputSize: detectorInputSize,
         scoreThreshold: 0.45,
@@ -150,7 +150,10 @@
     const loadModels = () => {
         if (!window.faceapi) return Promise.reject(new Error('Library wajah tidak termuat. Periksa koneksi internet lalu muat ulang.'));
         if (!modelsPromise) {
-            modelsPromise = faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
+            modelsPromise = faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl).catch((error) => {
+                modelsPromise = null;
+                throw error;
+            });
         }
         return modelsPromise;
     };
@@ -257,7 +260,7 @@
             const centerDeltaY = (targetFaceBox.y + targetFaceBox.height / 2) - (displayedFaceBox.y + displayedFaceBox.height / 2);
             const movement = Math.hypot(centerDeltaX, centerDeltaY);
             const fastMovementThreshold = Math.max(videoWidth, videoHeight) * 0.035;
-            const smoothingTime = movement > fastMovementThreshold ? 24 : 55;
+            const smoothingTime = movement > fastMovementThreshold ? 75 : 130;
             const smoothing = 1 - Math.exp(-frameDuration / smoothingTime);
             displayedFaceBox.x += (targetFaceBox.x - displayedFaceBox.x) * smoothing;
             displayedFaceBox.y += (targetFaceBox.y - displayedFaceBox.y) * smoothing;
@@ -415,7 +418,7 @@
     const captureDescriptor = async () => {
         await loadRecognitionModels();
         const descriptorDetection = await faceapi
-            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 }))
+            .detectSingleFace(video, detectorOptions)
             .withFaceLandmarks()
             .withFaceDescriptor();
         if (!descriptorDetection) throw new Error('Wajah berubah atau tidak terbaca. Tahan posisi dan coba lagi.');
@@ -429,14 +432,9 @@
         busy = true;
         scanLatched = true;
         result.hidden = true;
-        setStatus('Wajah terlihat jelas. Tahan posisi, pemindaian akan dimulai sebentar lagi…');
+        setStatus('Sedang membaca wajah…');
         try {
-            await new Promise((resolve) => window.setTimeout(resolve, 900));
-            setStatus('Sedang membaca wajah. Mohon jangan bergerak…');
             attendanceSamples.splice(0, attendanceSamples.length, await captureDescriptor());
-            setStatus('Sampel pertama terbaca. Memastikan ulang wajah…');
-            await new Promise((resolve) => window.setTimeout(resolve, 350));
-            attendanceSamples.push(await captureDescriptor());
             setStatus('Pemeriksaan selesai. Mengirim hasil scan…');
             const data = await postJson(panel.dataset.attendanceEndpoint, {
                 descriptors: attendanceSamples,
@@ -577,9 +575,11 @@
     const detectLoop = async () => {
         if (!stream || document.hidden || detectionLoopRunning) return;
         detectionLoopRunning = true;
-        const startedAt = performance.now();
+        let inferenceDuration = 0;
         try {
+            const inferenceStartedAt = performance.now();
             const detections = await detectFaces();
+            inferenceDuration = performance.now() - inferenceStartedAt;
             if (detections.length !== 1) {
                 drawDetection(null);
                 handleLostFace();
@@ -611,10 +611,8 @@
         } finally {
             detectionLoopRunning = false;
             if (stream && !document.hidden) {
-                const duration = performance.now() - startedAt;
-                const recoveryDelay = Math.min(100, duration * 0.2);
-                const adaptiveDelay = Math.max(scanInterval - duration, recoveryDelay);
-                scheduleDetection(adaptiveDelay);
+                const minimumDelay = scanLatched && !result.hidden ? 350 : scanInterval;
+                scheduleDetection(Math.max(minimumDelay, inferenceDuration));
             }
         }
     };
@@ -682,6 +680,10 @@
             setStatus('Kamera aktif. Memuat model deteksi wajah…');
             await loadModels();
             startOverlayAnimation();
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+                setStatus('Menyiapkan deteksi untuk pemindaian pertama…');
+                await detectFaces();
+            }
             stableDetections = 0;
             setStatus('Model siap. Posisikan satu wajah di dalam kotak.');
             result.hidden = true;
@@ -765,6 +767,11 @@
     updateCameraSourceLabel();
     setMode(mode);
     setAttendanceType(attendanceType);
+    window.setTimeout(() => {
+        Promise.all([loadModels(), loadRecognitionModels()]).catch((error) => {
+            console.warn('Model wajah belum dapat dimuat; pemuatan ulang akan dicoba saat diperlukan.', error);
+        });
+    }, 0);
     if (autoStartCamera && canUseCamera()) {
         window.setTimeout(() => {
             if (cameraToggle && !cameraStarting && document.hasFocus()) {

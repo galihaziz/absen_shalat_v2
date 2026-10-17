@@ -68,6 +68,7 @@ Route::middleware('auth')->group(function () {
     Route::middleware('role:admin,kesiswaan')->group(function () {
         Route::get('/backup', [DatabaseBackupController::class, 'index'])->name('backups.index');
         Route::post('/backup', [DatabaseBackupController::class, 'store'])->middleware('throttle:5,1')->name('backups.store');
+        Route::put('/backup/jadwal', [DatabaseBackupController::class, 'updateSchedule'])->name('backups.schedule.update');
     });
 
     Route::middleware('role:admin')->group(function () {
@@ -92,6 +93,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/data_siswa/qr/cetak-massal', [StudentController::class, 'qrPdfMass'])->middleware('throttle:3,1')->name('students.qr.mass');
         Route::get('/data_siswa/{student}/qr.svg', [StudentController::class, 'qrSvg'])->name('students.qr.svg');
         Route::get('/data_siswa/{student}/foto', [StudentController::class, 'photo'])->name('students.photo');
+        Route::post('/data_siswa/tindakan-massal-alumni', [StudentController::class, 'bulkAlumniAction'])->name('students.alumni.bulk-action');
         Route::delete('/data_siswa/hapus-massal', [StudentController::class, 'destroyMass'])->name('students.destroy.mass');
         Route::delete('/data_siswa/{student}', [StudentController::class, 'destroy'])->name('students.destroy');
         Route::post('/kelas', [StudentController::class, 'storeClass'])->name('classes.store');

@@ -2692,6 +2692,9 @@ tbody tr:hover { background: #f7faf8; }
 .bulk-delete-count { color: var(--coral); font-size: 13px; }
 .bulk-student-delete-form { align-items: end; }
 .bulk-student-delete-form .button { flex: 0 0 auto; }
+.bulk-student-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.bulk-student-actions [data-alumni-selection-count] { margin-right: auto; color: var(--muted); font-size: 13px; }
+.bulk-student-actions input[type="checkbox"] { accent-color: var(--green); }
 .notice.warning { border-color: #b87518; background: #fff8e9; color: #73500c; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 @keyframes loading-shimmer { to { background-position: -200% 0; } }
@@ -2705,6 +2708,7 @@ tbody tr:hover { background: #f7faf8; }
     .attendance-progress-summary { align-items: flex-start; flex-wrap: wrap; }
     .bulk-student-delete-form { align-items: stretch; }
     .bulk-student-delete-form .button { flex-basis: 100%; }
+    .bulk-student-actions > .button { flex: 1 1 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
     .class-progress-card, .class-progress-track > span { transition: none; }

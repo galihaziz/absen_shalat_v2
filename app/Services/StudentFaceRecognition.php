@@ -9,6 +9,8 @@ class StudentFaceRecognition
 {
     private const MATCH_THRESHOLD = 0.35;
 
+    private const MATCH_THRESHOLD_SQUARED = self::MATCH_THRESHOLD * self::MATCH_THRESHOLD;
+
     private const MATCH_MARGIN = 0.10;
 
     private const DUPLICATE_MIN_MATCHES = 2;
@@ -34,7 +36,7 @@ class StudentFaceRecognition
 
             foreach ($descriptors as $descriptor) {
                 foreach ($savedDescriptors as $savedDescriptor) {
-                    if ($this->distance($descriptor, $savedDescriptor) <= self::MATCH_THRESHOLD) {
+                    if ($this->squaredDistance($descriptor, $savedDescriptor, self::MATCH_THRESHOLD_SQUARED) <= self::MATCH_THRESHOLD_SQUARED) {
                         $matchingSamples++;
                         break;
                     }
@@ -67,28 +69,44 @@ class StudentFaceRecognition
         $matches = [];
 
         foreach ($descriptors as $descriptor) {
-            $candidates = [];
+            $bestStudent = null;
+            $bestDistanceSquared = INF;
+            $secondBestDistanceSquared = INF;
 
             foreach ($registrations as $registration) {
-                $distances = array_map(
-                    fn (array $savedDescriptor): float => $this->distance($descriptor, $savedDescriptor),
-                    $registration['descriptors']
-                );
-                $distance = min($distances);
-                $candidates[] = ['student' => $registration['student'], 'distance' => $distance];
+                $registrationDistanceSquared = INF;
+                foreach ($registration['descriptors'] as $savedDescriptor) {
+                    $distanceSquared = $this->squaredDistance(
+                        $descriptor,
+                        $savedDescriptor,
+                        min($registrationDistanceSquared, $secondBestDistanceSquared)
+                    );
+                    if ($distanceSquared < $registrationDistanceSquared) {
+                        $registrationDistanceSquared = $distanceSquared;
+                    }
+                }
+
+                if ($registrationDistanceSquared < $bestDistanceSquared) {
+                    $secondBestDistanceSquared = $bestDistanceSquared;
+                    $bestDistanceSquared = $registrationDistanceSquared;
+                    $bestStudent = $registration['student'];
+                } elseif ($registrationDistanceSquared < $secondBestDistanceSquared) {
+                    $secondBestDistanceSquared = $registrationDistanceSquared;
+                }
             }
 
-            usort($candidates, fn (array $left, array $right): int => $left['distance'] <=> $right['distance']);
-
-            if ($candidates === [] || $candidates[0]['distance'] > self::MATCH_THRESHOLD) {
+            if ($bestStudent === null || $bestDistanceSquared > self::MATCH_THRESHOLD_SQUARED) {
                 return null;
             }
 
-            if (isset($candidates[1]) && ($candidates[1]['distance'] - $candidates[0]['distance']) < self::MATCH_MARGIN) {
+            if (
+                $secondBestDistanceSquared < INF
+                && sqrt($secondBestDistanceSquared) - sqrt($bestDistanceSquared) < self::MATCH_MARGIN
+            ) {
                 return null;
             }
 
-            $matches[] = $candidates[0]['student'];
+            $matches[] = $bestStudent;
         }
 
         $studentIds = array_unique(array_map(fn (Student $student): int => $student->id, $matches));
@@ -119,14 +137,17 @@ class StudentFaceRecognition
      * @param array<int, float> $left
      * @param array<int, float> $right
      */
-    private function distance(array $left, array $right): float
+    private function squaredDistance(array $left, array $right, float $stopAt = INF): float
     {
         $sum = 0.0;
         for ($index = 0; $index < 128; $index++) {
             $difference = $left[$index] - $right[$index];
             $sum += $difference * $difference;
+            if ($sum > $stopAt) {
+                return $sum;
+            }
         }
 
-        return sqrt($sum);
+        return $sum;
     }
 }

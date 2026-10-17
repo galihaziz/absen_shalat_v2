@@ -420,8 +420,12 @@ class NativeFlowMigrationTest extends TestCase
 
         $this->actingAs($this->makeUser('admin'));
         $this->get('/data_siswa')->assertOk()
+            ->assertSee('data-student-create-button', false)
+            ->assertSee('+ Tambah siswa')
+            ->assertSee('id="studentCreate"', false)
             ->assertSee('Hapus data siswa massal')
-            ->assertSee('Termasuk siswa alumni')
+            ->assertSee('Semua siswa alumni')
+            ->assertSee('Semua siswa alumni · 1 siswa')
             ->assertSee('IPA · 2 siswa')
             ->assertSee('PS/BR/BD · 4 siswa')
             ->assertSee('data-mass-delete-form', false);
@@ -470,6 +474,55 @@ class NativeFlowMigrationTest extends TestCase
             $this->assertDatabaseMissing('absensi', ['id_siswa' => $student->id]);
             $this->assertFalse(Storage::disk('local')->exists('foto-siswa/'.substr($student->induk, 0, 3).'/'.$student->induk.'.jpg'));
         }
+    }
+
+    public function test_mass_delete_can_delete_all_alumni_without_deleting_active_students(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'XII IPA 3']);
+        $activeStudent = Student::query()->create([
+            'induk' => '8510999', 'nama' => 'Siswa Aktif', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
+        ]);
+        $alumni = collect(range(1, 2))->map(function (int $number) use ($classroom): Student {
+            $induk = '851000'.$number;
+            $student = Student::query()->create([
+                'induk' => $induk,
+                'nama' => 'Siswa Alumni '.$number,
+                'jenis_kelamin' => 'P',
+                'id_kelas' => $classroom->id,
+                'is_alumni' => true,
+            ]);
+            Attendance::query()->create([
+                'id_siswa' => $student->id, 'tanggal' => '2026-10-07', 'status' => 'H',
+            ]);
+            Storage::disk('local')->put('foto-siswa/'.substr($induk, 0, 3).'/'.$induk.'.jpg', 'foto-uji');
+
+            return $student;
+        });
+
+        $this->actingAs($this->makeUser('admin'));
+        $this->delete('/data_siswa/hapus-massal', [
+            'scope' => 'alumni',
+            'alumni' => 'all',
+            'expected_count' => 99,
+        ])->assertSessionHasErrors('scope');
+        foreach ($alumni as $student) {
+            $this->assertDatabaseHas('siswa', ['id' => $student->id, 'is_alumni' => true]);
+        }
+
+        $this->delete('/data_siswa/hapus-massal', [
+            'scope' => 'alumni',
+            'alumni' => 'all',
+            'expected_count' => 2,
+        ])
+            ->assertRedirect('/data_siswa')
+            ->assertSessionHas('status', '2 siswa, absensi terkait, dan foto berhasil dihapus.');
+
+        foreach ($alumni as $student) {
+            $this->assertDatabaseMissing('siswa', ['id' => $student->id]);
+            $this->assertDatabaseMissing('absensi', ['id_siswa' => $student->id]);
+            $this->assertFalse(Storage::disk('local')->exists('foto-siswa/'.substr($student->induk, 0, 3).'/'.$student->induk.'.jpg'));
+        }
+        $this->assertDatabaseHas('siswa', ['id' => $activeStudent->id, 'is_alumni' => false]);
     }
 
     public function test_alpha_report_works_on_sqlite_and_lists_absence_dates(): void
@@ -1158,6 +1211,105 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertDatabaseMissing('absensi', ['id_siswa' => $student->id]);
     }
 
+    public function test_admin_can_reactivate_an_alumni_student_from_the_edit_form(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'XII IPA 2']);
+        $student = Student::query()->create([
+            'induk' => '7775',
+            'nama' => 'Alumni Aktif Kembali',
+            'jenis_kelamin' => 'L',
+            'id_kelas' => $classroom->id,
+            'is_alumni' => true,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->get('/data_siswa?status=alumni&edit='.$student->id)
+            ->assertOk()
+            ->assertSee('Status siswa')
+            ->assertSee('<option value="1" selected>Alumni</option>', false);
+
+        $this->post('/data_siswa', [
+            'id' => $student->id,
+            'induk' => $student->induk,
+            'nama' => $student->nama,
+            'jenis_kelamin' => $student->jenis_kelamin,
+            'id_kelas' => $classroom->id,
+            'kategori' => 'biasa',
+            'is_alumni' => '0',
+        ])->assertRedirect('/data_siswa')
+            ->assertSessionHas('status', 'Siswa alumni berhasil diaktifkan kembali.');
+
+        $this->assertDatabaseHas('siswa', ['id' => $student->id, 'is_alumni' => false]);
+        $this->get('/data_siswa?status=aktif')->assertOk()->assertSee('Alumni Aktif Kembali');
+        $this->get('/data_siswa?status=alumni')->assertOk()->assertDontSee('Alumni Aktif Kembali');
+    }
+
+    public function test_alumni_can_be_selected_and_bulk_deleted_or_reactivated(): void
+    {
+        Storage::fake('local');
+        $classroom = Classroom::query()->create(['nama' => 'XII IPA 1']);
+        $createStudent = static function (string $induk, string $name, bool $alumni) use ($classroom): Student {
+            $student = Student::query()->create([
+                'induk' => $induk,
+                'nama' => $name,
+                'jenis_kelamin' => 'L',
+                'id_kelas' => $classroom->id,
+                'is_alumni' => $alumni,
+            ]);
+            Attendance::query()->create([
+                'id_siswa' => $student->id,
+                'tanggal' => '2026-10-07',
+                'status' => 'H',
+            ]);
+            Storage::disk('local')->put('foto-siswa/'.substr($induk, 0, 3).'/'.$induk.'.jpg', 'foto-uji');
+
+            return $student;
+        };
+        $reactivateOne = $createStudent('8800001', 'Alumni Kembali 1', true);
+        $reactivateTwo = $createStudent('8800002', 'Alumni Kembali 2', true);
+        $deleteAlumni = $createStudent('8800003', 'Alumni Dihapus', true);
+        $activeStudent = $createStudent('8800004', 'Siswa Sudah Aktif', false);
+
+        $this->actingAs($this->makeUser('admin'));
+        $this->get('/data_siswa?status=alumni')
+            ->assertOk()
+            ->assertSee('Pilih semua yang ditampilkan')
+            ->assertSee('Hapus yang dipilih')
+            ->assertSee('Jadikan siswa aktif')
+            ->assertSee('data-alumni-student', false);
+        $activePage = $this->get('/data_siswa?status=aktif')->assertOk();
+        $this->assertStringNotContainsString('data-alumni-student', $activePage->getContent());
+
+        $this->post('/data_siswa/tindakan-massal-alumni', [
+            'action' => 'activate',
+            'student_ids' => [$reactivateOne->id, $reactivateTwo->id],
+        ])->assertRedirect('/data_siswa?status=alumni')
+            ->assertSessionHas('status', '2 siswa alumni berhasil dikembalikan menjadi siswa aktif.');
+
+        foreach ([$reactivateOne, $reactivateTwo] as $student) {
+            $this->assertDatabaseHas('siswa', ['id' => $student->id, 'is_alumni' => false]);
+            $this->assertDatabaseHas('absensi', ['id_siswa' => $student->id]);
+        }
+        $this->assertDatabaseHas('siswa', ['id' => $deleteAlumni->id, 'is_alumni' => true]);
+
+        $this->post('/data_siswa/tindakan-massal-alumni', [
+            'action' => 'delete',
+            'student_ids' => [$deleteAlumni->id],
+        ])->assertRedirect('/data_siswa?status=alumni')
+            ->assertSessionHas('status', '1 siswa alumni dan seluruh absensinya berhasil dihapus.');
+
+        $this->assertDatabaseMissing('siswa', ['id' => $deleteAlumni->id]);
+        $this->assertDatabaseMissing('absensi', ['id_siswa' => $deleteAlumni->id]);
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/880/8800003.jpg'));
+        $this->assertDatabaseHas('siswa', ['id' => $activeStudent->id, 'is_alumni' => false]);
+
+        $this->post('/data_siswa/tindakan-massal-alumni', [
+            'action' => 'delete',
+            'student_ids' => [$activeStudent->id],
+        ])->assertSessionHasErrors('student_ids');
+        $this->assertDatabaseHas('siswa', ['id' => $activeStudent->id, 'is_alumni' => false]);
+    }
+
     public function test_student_management_list_loads_only_fifty_active_students_per_request(): void
     {
         $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
@@ -1169,9 +1321,15 @@ class NativeFlowMigrationTest extends TestCase
                 'id_kelas' => $classroom->id,
             ]);
         }
-        Student::query()->create([
-            'induk' => '12600999', 'nama' => 'Siswa Alumni', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id, 'is_alumni' => true,
-        ]);
+        foreach (range(1, 51) as $number) {
+            Student::query()->create([
+                'induk' => (string) (12700000 + $number),
+                'nama' => 'Alumni '.$number,
+                'jenis_kelamin' => 'P',
+                'id_kelas' => $classroom->id,
+                'is_alumni' => true,
+            ]);
+        }
 
         $this->actingAs($this->makeUser('admin'));
         $page = $this->get('/data_siswa')->assertOk()->assertSee('data-student-load-trigger', false);
@@ -1183,6 +1341,19 @@ class NativeFlowMigrationTest extends TestCase
         $nextPage->assertOk()->assertJsonPath('count', 1)->assertJsonPath('nextPageUrl', null);
         $this->assertStringNotContainsString('student-qr-select', $nextPage->json('html'));
         $this->assertStringContainsString('Riwayat', $nextPage->json('html'));
+
+        $alumniPage = $this->get('/data_siswa?status=alumni')->assertOk()
+            ->assertSee('Daftar siswa alumni')
+            ->assertSee('Siswa alumni (51)')
+            ->assertSee('Alumni 1')
+            ->assertDontSee('Siswa 1</td>');
+        $alumniRows = $this->getJson('/data_siswa?status=alumni')->assertOk()->json('html');
+        $this->assertStringNotContainsString('data-student-qr-link', $alumniRows);
+        $this->assertStringNotContainsString('/wajah', $alumniRows);
+        $this->assertStringNotContainsString('Reset PIN', $alumniRows);
+        $alumniNextPage = $this->getJson('/data_siswa?status=alumni&page=2');
+        $alumniNextPage->assertOk()->assertJsonPath('count', 1)->assertJsonPath('nextPageUrl', null);
+        $this->assertStringContainsString('Alumni', $alumniNextPage->json('html'));
         $this->assertStringNotContainsString('Siswa Alumni', $nextPage->json('html'));
     }
 

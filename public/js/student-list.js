@@ -7,6 +7,9 @@
     const loadStatus = list?.querySelector('[data-student-load-status]');
     const countLabel = list?.querySelector('[data-student-count]');
     const searchForm = list?.querySelector('[data-student-search]');
+    const bulkAlumniForm = list?.querySelector('[data-bulk-alumni-form]');
+    const alumniSelectionCount = list?.querySelector('[data-alumni-selection-count]');
+    const alumniSelectAll = list?.querySelector('[data-alumni-select-all]');
 
     if (!list || !tableWrap || !tableBody || !trigger || !loadButton || !loadStatus || !countLabel) return;
 
@@ -22,6 +25,34 @@
         countLabel.textContent = nextPageUrl ? `${loadedCount} ditampilkan` : `${loadedCount} siswa`;
         countLabel.dataset.count = String(loadedCount);
     };
+
+    const updateAlumniSelection = () => {
+        if (!bulkAlumniForm) return;
+        const checkboxes = Array.from(tableBody.querySelectorAll('[data-alumni-student]'));
+        const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+        alumniSelectionCount.textContent = `${selected} siswa dipilih`;
+        bulkAlumniForm.querySelectorAll('[data-alumni-action]').forEach((button) => {
+            button.disabled = selected === 0;
+        });
+        alumniSelectAll.checked = checkboxes.length > 0 && selected === checkboxes.length;
+        alumniSelectAll.indeterminate = selected > 0 && selected < checkboxes.length;
+    };
+
+    tableBody.addEventListener('change', (event) => {
+        if (event.target.matches('[data-alumni-student]')) updateAlumniSelection();
+    });
+    alumniSelectAll?.addEventListener('change', () => {
+        tableBody.querySelectorAll('[data-alumni-student]').forEach((checkbox) => {
+            checkbox.checked = alumniSelectAll.checked;
+        });
+        updateAlumniSelection();
+    });
+    bulkAlumniForm?.addEventListener('submit', (event) => {
+        const submitter = event.submitter;
+        if (submitter?.value === 'delete' && !window.confirm('Hapus siswa alumni yang dipilih beserta seluruh riwayat absensinya?')) {
+            event.preventDefault();
+        }
+    });
 
     const loadNextPage = async () => {
         if (isLoading || !nextPageUrl) return;
@@ -49,6 +80,7 @@
             const result = await response.json();
             tableBody.insertAdjacentHTML('beforeend', result.html);
             loadedCount += Number(result.count) || 0;
+            updateAlumniSelection();
             nextPageUrl = result.nextPageUrl;
             loadStatus.textContent = '';
             updateControls();
@@ -71,8 +103,17 @@
             button.textContent = 'Mencari...';
         }
     });
-    document.querySelector('[data-student-create]')?.addEventListener('click', (event) => {
-        event.currentTarget.closest('details').open = true;
+    const studentCreatePanel = document.querySelector('#studentCreate');
+    const openStudentForm = () => {
+        if (!studentCreatePanel) return;
+        studentCreatePanel.open = true;
+        studentCreatePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        studentCreatePanel.querySelector('input[name="induk"]')?.focus({ preventScroll: true });
+    };
+    document.querySelector('[data-student-create-button]')?.addEventListener('click', openStudentForm);
+    document.querySelector('[data-student-create-link]')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        openStudentForm();
     });
     updateControls();
 

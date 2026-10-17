@@ -3,11 +3,16 @@
 @section('title', 'Data Siswa · Rekap Absensi Solat')
 
 @section('content')
-<div class="page-heading"><div><p class="eyebrow">DATA REFERENSI</p><h1>Siswa dan rombel</h1></div></div>
+<div class="page-heading">
+    <div><p class="eyebrow">DATA REFERENSI</p><h1>Siswa dan rombel</h1></div>
+    @unless($editing)
+        <button class="button primary" type="button" data-student-create-button aria-controls="studentCreate">+ Tambah siswa</button>
+    @endunless
+</div>
 <div class="content-grid student-crud-layout">
     <div class="student-management-column">
-    <section class="panel management-panel"><details class="management-disclosure" @if($editing) open @endif>
-        <summary id="studentCreate" data-student-create>{{ $editing ? 'Ubah data siswa' : 'Tambah siswa' }}@unless($editing)<small>Formulir siswa baru</small>@endunless</summary>
+    <section class="panel management-panel"><details id="studentCreate" class="management-disclosure" @if($editing || $errors->any()) open @endif>
+        <summary>{{ $editing ? 'Ubah data siswa' : 'Tambah siswa' }}@unless($editing)<small>Formulir siswa baru</small>@endunless</summary>
         <form class="stack-form" method="post" action="{{ route('students.store') }}" enctype="multipart/form-data">@csrf
             <input type="hidden" name="id" value="{{ old('id', $editing?->id) }}">
             <label>Nomor induk<input name="induk" value="{{ old('induk', $editing?->induk) }}" inputmode="numeric" required></label>
@@ -19,6 +24,14 @@
                 <option value="irma" @selected(old('kategori', $editing?->is_irma ? 'irma' : ($editing?->is_nonis ? 'nonis' : 'biasa')) === 'irma')>IRMA</option>
                 <option value="nonis" @selected(old('kategori', $editing?->is_irma ? 'irma' : ($editing?->is_nonis ? 'nonis' : 'biasa')) === 'nonis')>Nonis</option>
             </select></label>
+            @if($editing)
+                <label>Status siswa
+                    <select name="is_alumni">
+                        <option value="0" @selected((string) old('is_alumni', (int) $editing->is_alumni) === '0')>Aktif</option>
+                        <option value="1" @selected((string) old('is_alumni', (int) $editing->is_alumni) === '1')>Alumni</option>
+                    </select>
+                </label>
+            @endif
             @if($editing && $editingPhotoAvailable)
                 <div class="student-photo-edit"><img class="student-edit-photo" src="{{ route('students.photo', $editing) }}" alt="Foto {{ $editing->nama }}"><label class="check-label"><input type="checkbox" name="hapus_foto" value="1" @checked(old('hapus_foto'))> Hapus foto saat disimpan</label></div>
             @elseif($editing)
@@ -158,6 +171,7 @@
     </section>
     </div>
     <section class="panel student-list-panel" data-student-list data-next-page="{{ $students->nextPageUrl() }}">
+    @unless($showingAlumni)
     <div class="bulk-card-toolbar">
         <div><h2>Unduh kartu massal</h2><p>Pilih rombel, tingkat kelas, atau jurusan. Maksimal 100 kartu per PDF.</p></div>
         <form class="filters bulk-card-form" method="post" action="{{ route('students.qr.mass') }}">
@@ -182,16 +196,46 @@
             <button class="button primary" type="submit">Unduh kartu</button>
         </form>
     </div>
-    <div class="section-heading"><h2>Daftar siswa <small data-student-count data-count="{{ $students->count() }}">{{ $students->count() }} ditampilkan</small></h2><div class="actions"><a class="button quiet" href="{{ route('students.qr.selection') }}">Pilih siswa manual</a><form class="search-form" method="get" data-student-search><input name="cari" value="{{ $search }}" aria-label="Cari siswa berdasarkan nama, nomor induk, atau kelas" placeholder="Nama, nomor induk, atau kelas"><button class="button" type="submit">Cari</button>@if($search !== '')<a class="button quiet filter-reset" href="{{ route('students.index') }}">Reset</a>@endif</form></div></div>
+    @endunless
+    <div class="section-heading">
+        <div>
+            <h2>{{ $showingAlumni ? 'Daftar siswa alumni' : 'Daftar siswa aktif' }} <small data-student-count data-count="{{ $students->count() }}">{{ $students->count() }} ditampilkan</small></h2>
+            <div class="actions" role="group" aria-label="Filter status siswa">
+                <a class="button {{ $showingAlumni ? 'quiet' : 'primary' }}" href="{{ route('students.index', ['status' => 'aktif', 'cari' => $search ?: null]) }}">Siswa aktif ({{ $activeStudentCount }})</a>
+                <a class="button {{ $showingAlumni ? 'primary' : 'quiet' }}" href="{{ route('students.index', ['status' => 'alumni', 'cari' => $search ?: null]) }}">Siswa alumni ({{ $alumniStudentCount }})</a>
+            </div>
+        </div>
+        <div class="actions">
+            @unless($showingAlumni)<a class="button quiet" href="{{ route('students.qr.selection') }}">Pilih siswa manual</a>@endunless
+            <form class="search-form" method="get" data-student-search>
+                <input type="hidden" name="status" value="{{ $showingAlumni ? 'alumni' : 'aktif' }}">
+                <input name="cari" value="{{ $search }}" aria-label="Cari siswa berdasarkan nama, nomor induk, atau kelas" placeholder="Nama, nomor induk, atau kelas">
+                <button class="button" type="submit">Cari</button>
+                @if($search !== '')<a class="button quiet filter-reset" href="{{ route('students.index', ['status' => $showingAlumni ? 'alumni' : 'aktif']) }}">Reset</a>@endif
+            </form>
+        </div>
+    </div>
     @if($search !== '')<p class="filter-feedback" role="status">Pencarian aktif: “{{ $search }}”. {{ $matchingStudentCount }} siswa cocok.</p>@endif
-    <div class="table-wrap" data-student-table-wrap><table><thead><tr><th>Induk</th><th class="sticky-name">Nama</th><th>L/P</th><th>Kelas</th><th>Kategori</th><th>Aksi</th></tr></thead><tbody data-student-table-body>
-    @include('students._rows', ['students' => $students])
+    @if($showingAlumni)
+        <form id="bulkAlumniForm" method="post" action="{{ route('students.alumni.bulk-action') }}" data-bulk-alumni-form>
+            @csrf
+            <div class="bulk-student-actions">
+                <label class="check-label"><input type="checkbox" data-alumni-select-all> Pilih semua yang ditampilkan</label>
+                <span data-alumni-selection-count role="status" aria-live="polite">0 siswa dipilih</span>
+                <button class="button danger" type="submit" name="action" value="delete" data-alumni-action disabled>Hapus yang dipilih</button>
+                <button class="button primary" type="submit" name="action" value="activate" data-alumni-action disabled>Jadikan siswa aktif</button>
+            </div>
+        </form>
+        @error('student_ids')<p class="filter-feedback" role="alert">{{ $message }}</p>@enderror
+    @endif
+    <div class="table-wrap" data-student-table-wrap><table><thead><tr>@if($showingAlumni)<th><span class="visually-hidden">Pilih</span></th>@endif<th>Induk</th><th class="sticky-name">Nama</th><th>L/P</th><th>Kelas</th><th>Kategori</th><th>Aksi</th></tr></thead><tbody data-student-table-body>
+    @include('students._rows', ['students' => $students, 'showingAlumni' => $showingAlumni])
     </tbody></table><div class="student-load-trigger" data-student-load-trigger @if(! $students->hasMorePages()) hidden @endif><span class="loading-feedback" data-student-load-status role="status" aria-live="polite"></span><button class="button quiet small" type="button" data-student-load-button>Muat data berikutnya</button></div></div>
 </section>
 </div>
 <section class="panel bulk-student-delete-panel">
     <div class="section-heading">
-        <div><p class="eyebrow">TINDAKAN PERMANEN</p><h2>Hapus data siswa massal</h2><p>Menghapus siswa, riwayat absensi, dan foto. Termasuk siswa alumni.</p></div>
+        <div><p class="eyebrow">TINDAKAN PERMANEN</p><h2>Hapus data siswa massal</h2><p>Hapus siswa aktif maupun alumni berdasarkan kelas, tingkat, atau jurusan. Pilihan khusus alumni menghapus semua alumni.</p></div>
         <strong class="bulk-delete-count" data-mass-delete-count aria-live="polite"></strong>
     </div>
     <form class="filters bulk-student-delete-form" method="post" action="{{ route('students.destroy.mass') }}" data-mass-delete-form>
@@ -202,20 +246,21 @@
             <option value="class" @selected(old('scope', 'class') === 'class')>Per kelas</option>
             <option value="grade" @selected(old('scope') === 'grade')>Per tingkat</option>
             <option value="major" @selected(old('scope') === 'major')>Per jurusan</option>
+            <option value="alumni" @selected(old('scope') === 'alumni')>Semua siswa alumni</option>
             </select>
         </label>
-        @foreach(['class', 'grade', 'major'] as $deleteScope)
+        @foreach(['class' => 'Kelas', 'grade' => 'Tingkat', 'major' => 'Jurusan', 'alumni' => 'Alumni'] as $deleteScope => $deleteLabel)
             <label data-mass-delete-target="{{ $deleteScope }}" @if($deleteScope !== 'class') hidden @endif>
-                {{ ['class' => 'Kelas', 'grade' => 'Tingkat', 'major' => 'Jurusan'][$deleteScope] }}
-                <select name="{{ ['class' => 'classroom_id', 'grade' => 'grade', 'major' => 'major'][$deleteScope] }}" @disabled($deleteScope !== 'class')>
+                {{ $deleteLabel }}
+                <select name="{{ ['class' => 'classroom_id', 'grade' => 'grade', 'major' => 'major', 'alumni' => 'alumni'][$deleteScope] }}" @disabled($deleteScope !== 'class')>
                     @foreach($massDeleteOptions[$deleteScope] as $option)
-                        <option value="{{ $option['value'] }}" data-count="{{ $option['count'] }}" @selected((string) old(['class' => 'classroom_id', 'grade' => 'grade', 'major' => 'major'][$deleteScope]) === (string) $option['value'])>{{ $option['label'] }} · {{ $option['count'] }} siswa</option>
+                        <option value="{{ $option['value'] }}" data-count="{{ $option['count'] }}" @selected((string) old(['class' => 'classroom_id', 'grade' => 'grade', 'major' => 'major', 'alumni' => 'alumni'][$deleteScope]) === (string) $option['value'])>{{ $option['label'] }} · {{ $option['count'] }} siswa</option>
                     @endforeach
                 </select>
             </label>
         @endforeach
         <input type="hidden" name="expected_count" data-mass-delete-expected>
-        <button class="button danger" type="submit" @disabled($massDeleteOptions['class']->isEmpty())>Hapus kelompok terpilih</button>
+        <button class="button danger" type="submit" @disabled(collect($massDeleteOptions)->every(fn ($options) => $options->isEmpty()))>Hapus kelompok terpilih</button>
     </form>
     @error('scope')<p class="filter-feedback" role="alert">{{ $message }}</p>@enderror
 </section>

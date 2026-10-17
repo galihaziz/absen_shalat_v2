@@ -40,10 +40,17 @@ class StudentController extends Controller
     public function index(Request $request): View|JsonResponse
     {
         $search = trim((string) $request->query('cari', ''));
+        $showingAlumni = $request->query('status') === 'alumni';
+        $studentCounts = Student::query()
+            ->selectRaw('is_alumni, COUNT(*) as total')
+            ->groupBy('is_alumni')
+            ->pluck('total', 'is_alumni');
+        $activeStudentCount = (int) $studentCounts->get(0, $studentCounts->get('0', 0));
+        $alumniStudentCount = (int) $studentCounts->get(1, $studentCounts->get('1', 0));
         $studentQuery = Student::query()
             ->join('kelas as student_classrooms', 'student_classrooms.id', '=', 'siswa.id_kelas')
             ->select('siswa.*')
-            ->where('is_alumni', false)
+            ->where('siswa.is_alumni', $showingAlumni)
             ->with(['classroom', 'faceRegistration'])
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($studentQuery) use ($search): void {
@@ -64,7 +71,7 @@ class StudentController extends Controller
 
         if ($request->expectsJson()) {
             return response()->json([
-                'html' => view('students._rows', compact('students', 'search'))->render(),
+                'html' => view('students._rows', compact('students', 'search', 'showingAlumni'))->render(),
                 'nextPageUrl' => $students->nextPageUrl(),
                 'count' => $students->count(),
             ]);
@@ -84,6 +91,7 @@ class StudentController extends Controller
         $majors = $classes->map(fn (Classroom $class): string => $class->majorLabel())
             ->unique()->sort()->values();
         $deleteClasses = Classroom::query()->withCount('students')->orderBy('nama')->get();
+        $alumniCount = Student::query()->where('is_alumni', true)->count();
         $massDeleteOptions = [
             'class' => $deleteClasses
                 ->filter(fn (Classroom $class): bool => $class->students_count > 0)
@@ -102,6 +110,9 @@ class StudentController extends Controller
                 ->filter(fn (array $option): bool => $option['count'] > 0)
                 ->sortBy('label')
                 ->values(),
+            'alumni' => collect($alumniCount > 0
+                ? [['value' => 'all', 'label' => 'Semua siswa alumni', 'count' => $alumniCount]]
+                : []),
         ];
         $editing = $request->filled('edit') ? Student::query()->find($request->integer('edit')) : null;
         $editingPhotoAvailable = $editing !== null && $this->studentPhotoPath($editing->induk) !== null;
@@ -109,7 +120,7 @@ class StudentController extends Controller
         $attendanceDeleteYear = (int) date('Y');
         $monthNames = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-        return view('students.index', compact('students', 'classes', 'grades', 'majors', 'majorGroups', 'availableRelatedMajors', 'massDeleteOptions', 'editing', 'editingPhotoAvailable', 'search', 'matchingStudentCount', 'attendanceDeleteMonth', 'attendanceDeleteYear', 'monthNames'));
+        return view('students.index', compact('students', 'classes', 'grades', 'majors', 'majorGroups', 'availableRelatedMajors', 'massDeleteOptions', 'editing', 'editingPhotoAvailable', 'search', 'matchingStudentCount', 'showingAlumni', 'activeStudentCount', 'alumniStudentCount', 'attendanceDeleteMonth', 'attendanceDeleteYear', 'monthNames'));
     }
 
     public function storeMajorGroup(Request $request): RedirectResponse
@@ -197,11 +208,13 @@ class StudentController extends Controller
             'jenis_kelamin' => ['required', 'in:L,P'],
             'id_kelas' => ['required', 'integer', 'exists:kelas,id'],
             'kategori' => ['nullable', 'in:biasa,irma,nonis'],
+            'is_alumni' => ['nullable', 'boolean'],
             'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'hapus_foto' => ['nullable', 'boolean'],
         ], ['induk.regex' => 'Nomor induk harus berupa angka.']);
 
         $student = isset($data['id']) ? Student::query()->findOrFail($data['id']) : new Student;
+        $wasAlumni = $student->exists && $student->is_alumni;
         $previousInduk = $student->exists ? $student->induk : null;
         $isRekeyingPhoto = $previousInduk !== null
             && $previousInduk !== $data['induk']
@@ -232,6 +245,7 @@ class StudentController extends Controller
             'id_kelas' => $data['id_kelas'],
             'is_irma' => $category === 'irma',
             'is_nonis' => $category === 'nonis',
+            'is_alumni' => array_key_exists('is_alumni', $data) ? (bool) $data['is_alumni'] : (bool) $student->is_alumni,
         ]);
 
         try {
@@ -254,7 +268,13 @@ class StudentController extends Controller
             $this->moveStudentPhoto($previousInduk, $student->induk);
         }
 
-        return redirect()->route('students.index')->with('status', $student->wasRecentlyCreated ? 'Siswa berhasil ditambahkan.' : 'Data siswa berhasil diperbarui.');
+        $statusMessage = $student->wasRecentlyCreated
+            ? 'Siswa berhasil ditambahkan.'
+            : ($wasAlumni && ! $student->is_alumni
+                ? 'Siswa alumni berhasil diaktifkan kembali.'
+                : 'Data siswa berhasil diperbarui.');
+
+        return redirect()->route('students.index')->with('status', $statusMessage);
     }
 
     public function resetPortalPin(Student $student): RedirectResponse
@@ -284,24 +304,29 @@ class StudentController extends Controller
     public function destroyMass(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'scope' => ['required', 'in:class,grade,major'],
+            'scope' => ['required', 'in:class,grade,major,alumni'],
             'classroom_id' => ['required_if:scope,class', 'nullable', 'integer', 'exists:kelas,id'],
             'grade' => ['required_if:scope,grade', 'nullable', 'in:X,XI,XII'],
             'major' => ['required_if:scope,major', 'nullable', 'string', 'max:50'],
+            'alumni' => ['required_if:scope,alumni', 'nullable', 'in:all'],
             'expected_count' => ['required', 'integer', 'min:1'],
         ]);
 
-        $classrooms = Classroom::query()->get(['id', 'nama']);
-        $classroomIds = match ($data['scope']) {
-            'class' => [(int) $data['classroom_id']],
-            'grade' => $classrooms
-                ->filter(fn (Classroom $class): bool => $this->classroomGrade($class->nama) === $data['grade'])
-                ->pluck('id')->all(),
-            'major' => $classrooms
-                ->filter(fn (Classroom $class): bool => $class->majorLabel() === $data['major'])
-                ->pluck('id')->all(),
-        };
-        $students = Student::query()->whereIn('id_kelas', $classroomIds)->get(['id', 'induk']);
+        if ($data['scope'] === 'alumni') {
+            $students = Student::query()->where('is_alumni', true)->get(['id', 'induk']);
+        } else {
+            $classrooms = Classroom::query()->get(['id', 'nama']);
+            $classroomIds = match ($data['scope']) {
+                'class' => [(int) $data['classroom_id']],
+                'grade' => $classrooms
+                    ->filter(fn (Classroom $class): bool => $this->classroomGrade($class->nama) === $data['grade'])
+                    ->pluck('id')->all(),
+                'major' => $classrooms
+                    ->filter(fn (Classroom $class): bool => $class->majorLabel() === $data['major'])
+                    ->pluck('id')->all(),
+            };
+            $students = Student::query()->whereIn('id_kelas', $classroomIds)->get(['id', 'induk']);
+        }
         if ($students->count() !== (int) $data['expected_count']) {
             throw ValidationException::withMessages([
                 'scope' => 'Jumlah siswa dalam kelompok berubah sejak halaman dibuka. Muat ulang halaman dan konfirmasi kembali.',
@@ -318,6 +343,67 @@ class StudentController extends Controller
 
         $redirect = redirect()->route('students.index')
             ->with('status', $students->count().' siswa, absensi terkait, dan foto berhasil dihapus.');
+        if ($photoFailures !== []) {
+            $redirect->with('warning', 'Data siswa terhapus, tetapi foto untuk '.count($photoFailures).' nomor induk gagal dihapus dari penyimpanan.');
+        }
+
+        return $redirect;
+    }
+
+    public function bulkAlumniAction(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:delete,activate'],
+            'student_ids' => ['required', 'array', 'min:1'],
+            'student_ids.*' => ['required', 'integer', 'distinct', 'exists:siswa,id'],
+        ]);
+
+        $result = DB::transaction(function () use ($data): array {
+            $students = Student::query()
+                ->whereIn('id', $data['student_ids'])
+                ->where('is_alumni', true)
+                ->lockForUpdate()
+                ->get(['id', 'induk']);
+
+            if ($students->count() !== count($data['student_ids'])) {
+                throw ValidationException::withMessages([
+                    'student_ids' => 'Pilihan harus berisi siswa alumni yang masih tersedia. Muat ulang halaman lalu pilih kembali.',
+                ]);
+            }
+
+            if ($data['action'] === 'activate') {
+                Student::query()
+                    ->whereIn('id', $students->pluck('id'))
+                    ->where('is_alumni', true)
+                    ->update(['is_alumni' => false]);
+
+                return ['count' => $students->count(), 'induks' => collect()];
+            }
+
+            Student::query()->whereIn('id', $students->pluck('id'))->delete();
+
+            return [
+                'count' => $students->count(),
+                'induks' => $students->pluck('induk')
+                    ->filter(fn ($induk): bool => is_string($induk) && $induk !== '')
+                    ->unique()
+                    ->values(),
+            ];
+        });
+
+        if ($data['action'] === 'activate') {
+            return redirect()->route('students.index', ['status' => 'alumni'])
+                ->with('status', $result['count'].' siswa alumni berhasil dikembalikan menjadi siswa aktif.');
+        }
+
+        $remainingInduks = Student::query()
+            ->whereIn('induk', $result['induks'])
+            ->distinct()
+            ->pluck('induk');
+        $photoFailures = $this->deleteStudentPhotos($result['induks']->diff($remainingInduks)->all());
+
+        $redirect = redirect()->route('students.index', ['status' => 'alumni'])
+            ->with('status', $result['count'].' siswa alumni dan seluruh absensinya berhasil dihapus.');
         if ($photoFailures !== []) {
             $redirect->with('warning', 'Data siswa terhapus, tetapi foto untuk '.count($photoFailures).' nomor induk gagal dihapus dari penyimpanan.');
         }

@@ -28,7 +28,6 @@ if (panel) {
         }
         if (processing) return;
         processing = true;
-        processing = true;
         setStatus('Memeriksa data siswa...');
         try {
             const response = await fetch(panel.dataset.endpoint, {

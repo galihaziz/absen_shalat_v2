@@ -2835,4 +2835,305 @@ tbody tr:hover { background: #f7faf8; }
     .class-progress-card, .class-progress-track > span { transition: none; }
     .loading-feedback.is-loading::before, .loading-shimmer { animation: none; }
 }
+
+    :root {
+        --ui-radius-sm: 10px;
+        --ui-radius-md: 15px;
+        --ui-radius-lg: 20px;
+        --ui-focus-ring: color-mix(in srgb, var(--green) 30%, transparent);
+        --ui-glass-border: color-mix(in srgb, var(--line) 72%, transparent);
+        --ui-glass-shadow: 0 12px 34px rgba(20, 52, 46, .08), inset 0 1px 0 rgba(255, 255, 255, .55);
+    }
+
+    :root:not([data-theme="dark"]) body {
+        background-image:
+            radial-gradient(ellipse at 12% 0%, rgba(141, 211, 191, .22), transparent 42%),
+            radial-gradient(ellipse at 92% 10%, rgba(160, 198, 228, .16), transparent 34%),
+            linear-gradient(145deg, #f6fbf8 0%, #edf5f1 55%, #f8fbfa 100%);
+        background-attachment: fixed;
+    }
+
+    .page h1,
+    .page h2,
+    .page h3,
+    .page h4 {
+        color: var(--ink);
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        letter-spacing: -.025em;
+    }
+
+    .page h1 { font-size: clamp(1.55rem, 2.7vw, 2rem); font-weight: 700; line-height: 1.2; }
+    .page h2 { font-size: clamp(1.15rem, 1.8vw, 1.35rem); font-weight: 650; line-height: 1.3; }
+    .page h3, .page h4 { font-weight: 650; line-height: 1.35; }
+
+    .page .panel,
+    .page .summary-strip,
+    .page .table-wrap,
+    .page .notice,
+    .page .import-filter-panel,
+    .page .import-selection-toolbar,
+    .page .bulk-card-toolbar,
+    .page .bulk-student-actions {
+        border-color: var(--ui-glass-border);
+        border-radius: var(--ui-radius-md);
+        box-shadow: var(--ui-glass-shadow);
+        backdrop-filter: blur(14px) saturate(135%);
+        -webkit-backdrop-filter: blur(14px) saturate(135%);
+    }
+
+    .page .panel {
+        background: color-mix(in srgb, var(--surface) 86%, transparent);
+    }
+
+    .page .panel:focus-within {
+        border-color: color-mix(in srgb, var(--green) 35%, var(--line));
+        box-shadow: var(--ui-glass-shadow), 0 0 0 3px var(--ui-focus-ring);
+    }
+
+    .page .table-wrap {
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
+    }
+
+    .page .summary-strip {
+        overflow: hidden;
+        background: color-mix(in srgb, var(--surface) 84%, transparent);
+    }
+
+    .page .summary-strip > div {
+        transition: background-color var(--motion-fast) ease;
+    }
+
+    .page .summary-strip > div:hover {
+        background: color-mix(in srgb, var(--highlight) 38%, transparent);
+    }
+
+    .page .notice {
+        border: 1px solid var(--ui-glass-border);
+        border-left: 4px solid var(--green);
+        border-radius: var(--ui-radius-sm);
+        background: color-mix(in srgb, var(--surface) 82%, transparent);
+        box-shadow: 0 8px 22px rgba(20, 52, 46, .06), inset 0 1px 0 rgba(255, 255, 255, .42);
+        backdrop-filter: blur(12px) saturate(130%);
+        -webkit-backdrop-filter: blur(12px) saturate(130%);
+    }
+
+    .page .notice.error { border-left-color: var(--coral); }
+    .page .notice.warning { border-left-color: #b87518; }
+
+    .page .button,
+    .page button:not(.attendance-select),
+    .page input[type="submit"],
+    .page input[type="button"] {
+        min-height: 40px;
+        border-radius: var(--ui-radius-sm);
+        font-weight: 600;
+        letter-spacing: -.01em;
+    }
+
+    .page .button.small { min-height: 36px; border-radius: 9px; font-size: 12px; }
+
+    .page .button.quiet,
+    .page button.quiet {
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    .page .button:disabled,
+    .page button:disabled,
+    .page input[type="submit"]:disabled,
+    .page input[type="button"]:disabled {
+        transform: none;
+        filter: saturate(.65);
+        box-shadow: none;
+    }
+
+    .page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="hidden"]):not([type="file"]),
+    .page select:not(.attendance-select),
+    .page textarea {
+        min-height: 42px;
+        border-color: color-mix(in srgb, var(--line) 85%, var(--ink));
+        border-radius: var(--ui-radius-sm);
+        background-color: color-mix(in srgb, var(--surface) 82%, transparent);
+        box-shadow: inset 0 1px 2px rgba(20, 52, 46, .035);
+    }
+
+    .page textarea {
+        min-height: 112px;
+        resize: vertical;
+    }
+
+    .page input::placeholder,
+    .page textarea::placeholder {
+        color: color-mix(in srgb, var(--muted) 78%, transparent);
+    }
+
+    .page input[type="checkbox"],
+    .page input[type="radio"] {
+        accent-color: var(--green);
+    }
+
+    .page input[type="checkbox"]:focus-visible,
+    .page input[type="radio"]:focus-visible {
+        outline: 3px solid var(--ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    .page input:focus-visible,
+    .page select:focus-visible,
+    .page textarea:focus-visible {
+        border-color: color-mix(in srgb, var(--green) 70%, var(--line));
+        outline: 3px solid var(--ui-focus-ring);
+        outline-offset: 1px;
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface) 70%, transparent);
+    }
+
+    .page .check-label {
+        color: var(--ink);
+        font-weight: 550;
+        line-height: 1.45;
+    }
+
+    .page .table-wrap table {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .page .table-wrap th {
+        border-bottom-color: var(--ui-glass-border);
+        background: color-mix(in srgb, var(--highlight) 58%, var(--surface));
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .055em;
+        text-transform: uppercase;
+    }
+
+    .page .table-wrap td {
+        border-bottom-color: color-mix(in srgb, var(--line) 76%, transparent);
+    }
+
+    .page .table-wrap tbody tr {
+        transition: background-color var(--motion-fast) ease;
+    }
+
+    .page .table-wrap tbody tr:hover {
+        background: color-mix(in srgb, var(--highlight) 48%, transparent);
+    }
+
+    .page .table-wrap tbody tr:hover .sticky-name,
+    .page .table-wrap tbody tr:hover .no,
+    .page .table-wrap tbody tr:hover .name {
+        background: color-mix(in srgb, var(--highlight) 68%, var(--surface));
+    }
+
+    .page .table-wrap .sticky-name,
+    .page .attendance-table td.no,
+    .page .attendance-table td.name {
+        background-color: color-mix(in srgb, var(--surface) 94%, transparent);
+    }
+
+    .page .table-wrap thead .sticky-name,
+    .page .attendance-table thead th.no,
+    .page .attendance-table thead th.name,
+    .page .attendance-table thead th.gender {
+        background: color-mix(in srgb, var(--highlight) 58%, var(--surface));
+    }
+
+    .page .import-selection-toolbar,
+    .page .bulk-card-toolbar,
+    .page .bulk-student-actions {
+        background: color-mix(in srgb, var(--surface) 84%, transparent);
+    }
+
+    .topbar .nav-links a {
+        border-radius: 999px;
+        padding: 8px 11px;
+        transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+    }
+
+    .topbar .nav-links a:hover {
+        background: rgba(232, 255, 246, .16);
+        color: #f4fffb;
+    }
+
+    .topbar .nav-links a.is-active {
+        background: rgba(232, 255, 246, .2);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22);
+        color: #fff;
+    }
+
+    .page a:not(.button) {
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+    }
+
+    .page a:not(.button):hover { text-decoration-thickness: 2px; }
+
+    .site-footer {
+        border-top-color: var(--ui-glass-border);
+        background: color-mix(in srgb, var(--surface) 62%, transparent);
+        backdrop-filter: blur(12px) saturate(125%);
+        -webkit-backdrop-filter: blur(12px) saturate(125%);
+    }
+
+    :root[data-theme="dark"] {
+        --ui-glass-shadow: 0 14px 36px rgba(0, 0, 0, .2), inset 0 1px 0 rgba(231, 255, 247, .08);
+    }
+
+    :root[data-theme="dark"] .page .notice {
+        box-shadow: 0 8px 22px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(231, 255, 247, .06);
+    }
+
+    :root[data-theme="dark"] .page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="hidden"]):not([type="file"]),
+    :root[data-theme="dark"] .page select:not(.attendance-select),
+    :root[data-theme="dark"] .page textarea {
+        border-color: color-mix(in srgb, var(--line) 85%, white 8%);
+        background-color: color-mix(in srgb, var(--surface) 92%, transparent);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+    }
+
+    :root[data-theme="dark"] .page .table-wrap .sticky-name,
+    :root[data-theme="dark"] .page .attendance-table td.no,
+    :root[data-theme="dark"] .page .attendance-table td.name {
+        background-color: color-mix(in srgb, var(--surface) 94%, transparent);
+    }
+
+    :root[data-theme="dark"] .page .table-wrap thead .sticky-name,
+    :root[data-theme="dark"] .page .attendance-table thead th.no,
+    :root[data-theme="dark"] .page .attendance-table thead th.name,
+    :root[data-theme="dark"] .page .attendance-table thead th.gender {
+        background: color-mix(in srgb, var(--highlight) 72%, var(--surface));
+    }
+
+    :root[data-theme="dark"] .topbar .nav-links a:hover,
+    :root[data-theme="dark"] .topbar .nav-links a.is-active {
+        background: rgba(196, 242, 224, .12);
+        color: #f1fff9;
+    }
+
+    :root[data-theme="dark"] .site-footer {
+        background: color-mix(in srgb, var(--surface) 74%, transparent);
+    }
+
+    @media (max-width: 700px) {
+        .page { width: min(100% - 24px, 1440px); margin-top: 18px; }
+        .page .panel { padding: clamp(14px, 4vw, 20px); }
+        .page .table-wrap { border-radius: 12px; }
+        .page .summary-strip { border-radius: 13px; }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+        .page .panel,
+        .page .summary-strip,
+        .page .table-wrap,
+        .page .notice,
+        .page .import-filter-panel,
+        .page .import-selection-toolbar,
+        .page .bulk-card-toolbar,
+        .page .bulk-student-actions,
+        .site-footer {
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+    }
 }

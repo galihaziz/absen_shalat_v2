@@ -226,6 +226,7 @@ if (mainNavigation && !navMotionMedia.matches) {
     let pointerX = 0;
     let pointerY = 0;
     let hoveredItem = null;
+    let pointerInsideNavigation = false;
 
     const clearGlyphEffects = (item) => {
         item?.querySelectorAll('.nav-lens-glyph').forEach((glyph) => {
@@ -241,8 +242,8 @@ if (mainNavigation && !navMotionMedia.matches) {
         const navRect = mainNavigation.getBoundingClientRect();
         const targetRect = glassTarget.getBoundingClientRect();
         const target = {
-            x: targetRect.left - navRect.left - mainNavigation.clientLeft,
-            y: targetRect.top - navRect.top - mainNavigation.clientTop,
+            x: targetRect.left - navRect.left - mainNavigation.clientLeft + mainNavigation.scrollLeft,
+            y: targetRect.top - navRect.top - mainNavigation.clientTop + mainNavigation.scrollTop,
             width: targetRect.width,
             height: targetRect.height
         };
@@ -301,19 +302,51 @@ if (mainNavigation && !navMotionMedia.matches) {
         if (!glassFrame) glassFrame = requestAnimationFrame(animateNavGlass);
     };
 
+    const syncNavGlassWithPointer = () => {
+        if (!pointerInsideNavigation) return;
+
+        const pointedElement = document.elementFromPoint(pointerX, pointerY);
+        const pointedItem = pointedElement?.closest('a');
+        if (pointedItem && mainNavigation.contains(pointedItem) && navLensItems.includes(pointedItem)) {
+            moveNavGlass(pointedItem, pointerX, pointerY);
+        } else {
+            returnNavGlassToActiveItem();
+        }
+    };
+
     if (navLensMedia.matches) {
         mainNavigation.addEventListener('pointermove', (event) => {
+            pointerInsideNavigation = true;
+            pointerX = event.clientX;
+            pointerY = event.clientY;
             const item = event.target.closest('a');
-            if (item && navLensItems.includes(item)) moveNavGlass(item, event.clientX, event.clientY);
+            if (item && navLensItems.includes(item)) moveNavGlass(item, pointerX, pointerY);
+            else returnNavGlassToActiveItem();
         });
     } else {
         mainNavigation.addEventListener('pointerdown', (event) => {
+            pointerInsideNavigation = true;
+            pointerX = event.clientX;
+            pointerY = event.clientY;
             const item = event.target.closest('a');
-            if (item && navLensItems.includes(item)) moveNavGlass(item, event.clientX, event.clientY);
+            if (item && navLensItems.includes(item)) moveNavGlass(item, pointerX, pointerY);
+            else returnNavGlassToActiveItem();
         });
+
+        const clearTouchPointer = (event) => {
+            if (event.pointerType !== 'touch') return;
+            pointerInsideNavigation = false;
+            returnNavGlassToActiveItem();
+        };
+        mainNavigation.addEventListener('pointerup', clearTouchPointer);
+        mainNavigation.addEventListener('pointercancel', clearTouchPointer);
     }
 
-    mainNavigation.addEventListener('pointerleave', returnNavGlassToActiveItem);
+    mainNavigation.addEventListener('scroll', syncNavGlassWithPointer, {passive: true});
+    mainNavigation.addEventListener('pointerleave', () => {
+        pointerInsideNavigation = false;
+        returnNavGlassToActiveItem();
+    });
 
     mainNavigation.addEventListener('focusin', (event) => {
         const item = event.target.closest('a');

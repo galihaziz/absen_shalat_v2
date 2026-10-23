@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -80,6 +81,14 @@ class StudentController extends Controller
         $classes = Classroom::query()
             ->withCount(['students' => fn ($query) => $query->where('is_alumni', false)])
             ->orderBy('nama')->get();
+        $normalizedSearch = mb_strtolower(preg_replace('/\s+/u', ' ', trim($search)) ?? trim($search), 'UTF-8');
+        $matchingPhotoClass = $normalizedSearch === ''
+            ? null
+            : $classes->first(fn (Classroom $class): bool => mb_strtolower(
+                preg_replace('/\s+/u', ' ', trim($class->nama)) ?? trim($class->nama),
+                'UTF-8'
+            ) === $normalizedSearch);
+        $photoDefaultClassroomId = $matchingPhotoClass?->id;
         $majorCatalog = app(MajorCatalog::class);
         $classroomNames = $classes->pluck('nama');
         $majorGroups = $majorCatalog->groups($classroomNames);
@@ -120,7 +129,7 @@ class StudentController extends Controller
         $attendanceDeleteYear = (int) date('Y');
         $monthNames = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-        return view('students.index', compact('students', 'classes', 'grades', 'majors', 'majorGroups', 'availableRelatedMajors', 'massDeleteOptions', 'editing', 'editingPhotoAvailable', 'search', 'matchingStudentCount', 'showingAlumni', 'activeStudentCount', 'alumniStudentCount', 'attendanceDeleteMonth', 'attendanceDeleteYear', 'monthNames'));
+        return view('students.index', compact('students', 'classes', 'grades', 'majors', 'majorGroups', 'availableRelatedMajors', 'massDeleteOptions', 'editing', 'editingPhotoAvailable', 'search', 'matchingStudentCount', 'showingAlumni', 'activeStudentCount', 'alumniStudentCount', 'attendanceDeleteMonth', 'attendanceDeleteYear', 'monthNames', 'photoDefaultClassroomId'));
     }
 
     public function storeMajorGroup(Request $request): RedirectResponse
@@ -201,9 +210,14 @@ class StudentController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $uniqueInduk = Rule::unique('siswa', 'induk');
+        if ($request->filled('id')) {
+            $uniqueInduk->ignore($request->integer('id'));
+        }
+
         $data = $request->validate([
             'id' => ['nullable', 'integer', 'exists:siswa,id'],
-            'induk' => ['required', 'regex:/^\d+$/', 'max:30'],
+            'induk' => ['required', 'regex:/^\d+$/', 'max:30', $uniqueInduk],
             'nama' => ['required', 'string', 'max:150'],
             'jenis_kelamin' => ['required', 'in:L,P'],
             'id_kelas' => ['required', 'integer', 'exists:kelas,id'],
@@ -211,7 +225,12 @@ class StudentController extends Controller
             'is_alumni' => ['nullable', 'boolean'],
             'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'hapus_foto' => ['nullable', 'boolean'],
-        ], ['induk.regex' => 'Nomor induk harus berupa angka.']);
+        ], [
+            'induk.regex' => 'Nomor induk harus berupa angka.',
+            'induk.unique' => 'Nomor induk sudah digunakan oleh siswa lain.',
+            'foto.file' => 'Foto gagal diterima server. Periksa upload_max_filesize dan folder sementara upload pada hosting.',
+            'foto.max' => 'Ukuran foto maksimal 5 MiB sebelum dikompres.',
+        ]);
 
         $student = isset($data['id']) ? Student::query()->findOrFail($data['id']) : new Student;
         $wasAlumni = $student->exists && $student->is_alumni;
@@ -249,16 +268,20 @@ class StudentController extends Controller
         ]);
 
         try {
-            $student->save();
+            DB::transaction(function () use ($student, $request): void {
+                $student->save();
+
+                if ($request->hasFile('foto') && ! $this->saveStudentPhoto($request->file('foto'), $student->induk)) {
+                    throw ValidationException::withMessages([
+                        'foto' => 'Foto gagal diproses atau disimpan. Pastikan GD aktif dan storage/app dapat ditulis pada server.',
+                    ]);
+                }
+            });
         } catch (QueryException) {
-            return back()->withInput()->withErrors(['nama' => 'Siswa dengan nama, jenis kelamin, dan kelas yang sama sudah terdaftar.']);
+            return back()->withInput()->withErrors(['induk' => 'Nomor induk sudah terdaftar. Periksa data siswa yang sudah ada.']);
         }
 
         if ($request->hasFile('foto')) {
-            if (! $this->saveStudentPhoto($request->file('foto'), $student->induk)) {
-                return back()->withInput()->withErrors(['foto' => 'Foto harus berhasil dikompres di bawah 100 KiB. Pastikan ekstensi GD aktif pada server.']);
-            }
-
             if ($previousInduk !== null && $previousInduk !== $student->induk) {
                 $this->deleteStudentPhoto($previousInduk);
             }
@@ -416,7 +439,11 @@ class StudentController extends Controller
         $data = $request->validate([
             'induk' => ['required', 'regex:/^\d+$/', 'max:30', 'exists:siswa,induk'],
             'foto' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-        ], ['induk.regex' => 'Nomor induk harus berupa angka.']);
+        ], [
+            'induk.regex' => 'Nomor induk harus berupa angka.',
+            'foto.file' => 'Foto gagal diterima server. Periksa upload_max_filesize dan folder sementara upload pada hosting.',
+            'foto.max' => 'Ukuran foto maksimal 5 MiB sebelum dikompres.',
+        ]);
 
         $matches = Student::query()->where('induk', $data['induk'])->get();
         if ($matches->count() !== 1) {
@@ -429,6 +456,217 @@ class StudentController extends Controller
         }
 
         return redirect()->route('students.qr', $student)->with('status', 'Foto siswa berhasil disimpan.');
+    }
+
+    public function storePhotosMass(Request $request): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate([
+            'photo_scope' => ['required', 'in:class,major_grade'],
+            'photo_classroom_id' => ['required_if:photo_scope,class', 'nullable', 'integer', 'exists:kelas,id'],
+            'photo_grade' => ['required_if:photo_scope,major_grade', 'nullable', 'in:X,XI,XII'],
+            'photo_major' => ['required_if:photo_scope,major_grade', 'nullable', 'string', 'max:50'],
+            'match_by' => ['required', 'in:induk,nama'],
+            'fotos' => ['required', 'array', 'min:1', 'max:20'],
+            'fotos.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ], [
+            'fotos.max' => 'Pilih maksimal 20 foto per unggahan manual.',
+            'fotos.required' => 'Tidak ada foto yang diterima. Periksa batas upload dan folder sementara PHP pada hosting.',
+            'fotos.*.file' => 'Salah satu foto gagal diterima server. Periksa batas upload dan folder sementara PHP pada hosting.',
+            'fotos.*.max' => 'Setiap foto maksimal 5 MiB sebelum dikompres.',
+        ]);
+
+        $classrooms = Classroom::query()->get(['id', 'nama']);
+        if ($data['photo_scope'] === 'class') {
+            $classroomIds = [(int) $data['photo_classroom_id']];
+        } else {
+            $classroomIds = $classrooms
+                ->filter(fn (Classroom $class): bool => $class->majorLabel() === $data['photo_major']
+                    && $this->classroomGrade($class->nama) === $data['photo_grade'])
+                ->pluck('id')
+                ->all();
+            if ($classroomIds === []) {
+                throw ValidationException::withMessages([
+                    'photo_major' => 'Tidak ada rombel untuk jurusan dan angkatan yang dipilih. Muat ulang halaman lalu pilih lagi.',
+                ]);
+            }
+        }
+
+        $students = Student::query()->whereIn('id_kelas', $classroomIds)->get(['id', 'induk', 'nama']);
+        $studentsByInduk = [];
+        if ($data['match_by'] === 'induk') {
+            foreach ($students as $student) {
+                $studentsByInduk[trim((string) $student->induk)][] = $student;
+            }
+        }
+
+        $savedStudentIds = [];
+        $errors = [];
+        $successCount = 0;
+        $lastStudentId = null;
+
+        foreach ($request->file('fotos', []) as $photo) {
+            $filename = $photo->getClientOriginalName();
+            $photoName = pathinfo($filename, PATHINFO_FILENAME);
+            if ($data['match_by'] === 'induk') {
+                $matches = $studentsByInduk[trim($photoName)] ?? [];
+            } else {
+                $key = $this->normalizeStudentPhotoName($photoName);
+                $searchableName = preg_replace('/\s+/u', '', $key) ?? $key;
+                if (mb_strlen($searchableName, 'UTF-8') < 3) {
+                    $errors[] = $filename.': nama file terlalu pendek; gunakan minimal 3 karakter nama atau pilih pencocokan nomor induk.';
+                    continue;
+                }
+
+                $matches = $students
+                    ->filter(fn (Student $student): bool => $this->studentPhotoNameMatches((string) $student->nama, $key))
+                    ->values()
+                    ->all();
+
+                if (count($matches) > 1) {
+                    $matches = array_values(array_filter($matches, fn (Student $student): bool => $this->normalizeStudentPhotoName((string) $student->nama) === $key));
+                }
+            }
+
+            if (count($matches) !== 1) {
+                $errors[] = count($matches) === 0
+                    ? $filename.': nama/nomor induk tidak ditemukan pada pilihan kelas atau jurusan/angkatan.'
+                    : $filename.': cocok dengan lebih dari satu siswa; gunakan pencocokan nomor induk.';
+                continue;
+            }
+
+            $student = $matches[0];
+            if (isset($savedStudentIds[$student->id])) {
+                $errors[] = $filename.': lebih dari satu foto mengarah ke siswa yang sama; hanya satu foto per siswa yang diunggah.';
+                continue;
+            }
+
+            if (! $this->saveStudentPhoto($photo, $student->induk)) {
+                $errors[] = $filename.': foto gagal dikompres di bawah 100 KiB atau gagal disimpan. Pastikan ekstensi GD aktif dan folder storage dapat ditulis.';
+                continue;
+            }
+
+            $savedStudentIds[$student->id] = true;
+            $lastStudentId = $student->id;
+            $successCount++;
+        }
+
+        if ($request->expectsJson()) {
+            $response = [
+                'success' => $successCount > 0,
+                'message' => $successCount > 0
+                    ? 'Foto siswa berhasil diunggah.'
+                    : ($errors[0] ?? 'Foto tidak berhasil diunggah.'),
+                'student_id' => $lastStudentId,
+            ];
+
+            return response()->json($response, $successCount > 0 ? 200 : 422);
+        }
+
+        $redirect = redirect()->route('students.index');
+        if ($successCount > 0) {
+            $redirect->with('status', $successCount.' foto siswa berhasil diunggah.');
+        }
+        if ($errors !== []) {
+            $details = implode(' ', array_slice($errors, 0, 10));
+            if (count($errors) > 10) {
+                $details .= ' Dan '.(count($errors) - 10).' foto lainnya gagal.';
+            }
+            $redirect->with('warning', $successCount > 0
+                ? $successCount.' foto berhasil; '.count($errors).' foto gagal. '.$details
+                : 'Tidak ada foto yang berhasil diunggah. '.$details);
+        }
+
+        return $redirect;
+    }
+
+    private function normalizeStudentPhotoName(string $name): string
+    {
+        $normalized = preg_replace('/[^\pL\pN]+/u', ' ', trim($name)) ?? trim($name);
+        $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
+
+        return mb_strtolower(trim($normalized), 'UTF-8');
+    }
+
+    private function studentPhotoNameMatches(string $studentName, string $photoName): bool
+    {
+        $normalizedStudentName = $this->normalizeStudentPhotoName($studentName);
+        $normalizedPhotoName = $this->normalizeStudentPhotoName($photoName);
+
+        if ($normalizedStudentName === '' || $normalizedPhotoName === '') {
+            return false;
+        }
+
+        $studentWords = preg_split('/\s+/u', $normalizedStudentName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $photoWords = preg_split('/\s+/u', $normalizedPhotoName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        if ($studentWords === [] || $photoWords === []) {
+            return false;
+        }
+
+        if ($normalizedStudentName === $normalizedPhotoName) {
+            return true;
+        }
+
+        if (str_contains($normalizedStudentName, $normalizedPhotoName) || str_contains($normalizedPhotoName, $normalizedStudentName)) {
+            return true;
+        }
+
+        $studentNoSpace = implode('', $studentWords);
+        $photoNoSpace = implode('', $photoWords);
+        if ($photoNoSpace !== '' && (str_contains($studentNoSpace, $photoNoSpace) || str_contains($photoNoSpace, $studentNoSpace))) {
+            return true;
+        }
+
+        $matchedPhotoWords = 0;
+        foreach ($photoWords as $photoWord) {
+            if (mb_strlen($photoWord, 'UTF-8') < 2) {
+                return false;
+            }
+
+            $wordMatched = false;
+            foreach ($studentWords as $studentWord) {
+                if ($studentWord === $photoWord) {
+                    $wordMatched = true;
+                    break;
+                }
+
+                if (mb_strlen($studentWord, 'UTF-8') < 2 || mb_strlen($photoWord, 'UTF-8') < 2) {
+                    continue;
+                }
+
+                if (
+                    str_contains($studentWord, $photoWord)
+                    || str_contains($photoWord, $studentWord)
+                    || str_starts_with($studentWord, $photoWord)
+                    || str_starts_with($photoWord, $studentWord)
+                ) {
+                    $wordMatched = true;
+                    break;
+                }
+            }
+
+            if ($wordMatched) {
+                $matchedPhotoWords++;
+            }
+        }
+
+        if ($matchedPhotoWords === count($photoWords) && $matchedPhotoWords >= min(2, count($photoWords))) {
+            return true;
+        }
+
+        $photoIndex = 0;
+        foreach ($studentWords as $studentWord) {
+            if ($photoIndex >= count($photoWords)) {
+                break;
+            }
+
+            $photoWord = $photoWords[$photoIndex];
+            if ($studentWord === $photoWord || str_starts_with($studentWord, $photoWord) || str_starts_with($photoWord, $studentWord)) {
+                $photoIndex++;
+            }
+        }
+
+        return $photoIndex === count($photoWords) && $photoIndex >= min(2, count($studentWords));
     }
 
     public function qr(Student $student): View

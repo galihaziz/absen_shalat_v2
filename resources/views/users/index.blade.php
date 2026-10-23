@@ -17,9 +17,9 @@
         </form>
     </section>
     <section class="panel"><div class="section-heading"><h2>Daftar akun</h2><form class="search-form" method="get"><input name="cari" value="{{ $search }}" placeholder="Nama, username, email, role"><button class="button" type="submit">Cari</button></form></div>
-        <div class="table-wrap"><table><thead><tr><th>Username</th><th class="sticky-name">Nama</th><th>Email pemulihan</th><th>Role</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>
-        @forelse($users as $user)<tr><td>{{ $user->username }}</td><td class="sticky-name">{{ $user->nama }}</td><td>{{ $user->email ?? '—' }}</td><td>{{ $user->role }}</td><td>{{ $user->created_at }}</td><td class="actions"><a class="button small" href="{{ route('users.index', ['edit' => $user->id]) }}">Ubah</a><form method="post" action="{{ route('users.destroy', $user) }}" onsubmit="return confirm('Hapus pengguna ini?')">@csrf @method('DELETE')<button class="button danger small" type="submit" @disabled($user->is(auth()->user()))>Hapus</button></form></td></tr>
-        @empty<tr><td colspan="6" class="empty">Belum ada pengguna.</td></tr>@endforelse
+        <div class="table-wrap"><table><thead><tr><th class="table-row-number">No.</th><th>Username</th><th class="sticky-name">Nama</th><th>Email pemulihan</th><th>Role</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>
+        @forelse($users as $index => $user)<tr><td class="table-row-number">{{ $index + 1 }}</td><td>{{ $user->username }}</td><td class="sticky-name">{{ $user->nama }}</td><td>{{ $user->email ?? '—' }}</td><td>{{ $user->role }}</td><td>{{ $user->created_at }}</td><td class="actions"><a class="button small" href="{{ route('users.index', ['edit' => $user->id]) }}">Ubah</a><form method="post" action="{{ route('users.destroy', $user) }}" onsubmit="return confirm('Hapus pengguna ini?')">@csrf @method('DELETE')<button class="button danger small" type="submit" @disabled($user->is(auth()->user()))>Hapus</button></form></td></tr>
+        @empty<tr><td colspan="7" class="empty">Belum ada pengguna.</td></tr>@endforelse
         </tbody></table></div>
     </section>
 </div>

@@ -7,13 +7,8 @@ use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     */
-    public function test_guests_are_redirected_to_login(): void
+    public function test_guests_see_the_student_login_at_root(): void
     {
-        $response = $this->get('/');
-
-        $response->assertRedirect('/staff/login');
+        $this->get('/')->assertOk()->assertSee('Nomor induk')->assertSee('PIN');
     }
 }

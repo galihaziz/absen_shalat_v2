@@ -1,6 +1,7 @@
-@forelse($students as $student)
+@forelse($students as $index => $student)
     <tr>
         @if($showingAlumni)<td><input type="checkbox" form="bulkAlumniForm" name="student_ids[]" value="{{ $student->id }}" aria-label="Pilih alumni {{ $student->nama }}" data-alumni-student></td>@endif
+        <td class="table-row-number">{{ (($students->currentPage() - 1) * $students->perPage()) + $index + 1 }}</td>
         <td>{{ $student->induk }}</td>
         <td class="sticky-name">{{ $student->nama }}</td>
         <td>{{ $student->jenis_kelamin }}</td>
@@ -16,5 +17,5 @@
         </div></td>
     </tr>
 @empty
-    <tr><td colspan="{{ $showingAlumni ? 7 : 6 }}" class="empty">Belum ada {{ $showingAlumni ? 'siswa alumni' : 'siswa aktif' }} yang cocok. @if($search !== '')<a href="{{ route('students.index', ['status' => $showingAlumni ? 'alumni' : 'aktif']) }}">Hapus pencarian</a>@elseif(! $showingAlumni)<a href="#studentCreate" data-student-create-link>Tambah siswa pertama</a>@endif</td></tr>
+    <tr><td colspan="{{ $showingAlumni ? 8 : 7 }}" class="empty">Belum ada {{ $showingAlumni ? 'siswa alumni' : 'siswa aktif' }} yang cocok. @if($search !== '')<a href="{{ route('students.index', ['status' => $showingAlumni ? 'alumni' : 'aktif']) }}">Hapus pencarian</a>@elseif(! $showingAlumni)<a href="#studentCreate" data-student-create-link>Tambah siswa pertama</a>@endif</td></tr>
 @endforelse

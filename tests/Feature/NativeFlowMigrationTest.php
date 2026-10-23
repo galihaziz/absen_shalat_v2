@@ -7,8 +7,8 @@ use AbsenShalat\Models\AppSetting;
 use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\Student;
 use AbsenShalat\Models\User;
-use App\Services\StudentCardPhotoProcessor;
 use App\Services\MajorCatalog;
+use App\Services\StudentCardPhotoProcessor;
 use App\Services\StudentQrCodeGenerator;
 use Endroid\QrCode\Encoding\Encoding;
 use Endroid\QrCode\ErrorCorrectionLevel;
@@ -16,16 +16,21 @@ use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\SvgWriter;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Carbon;
+use Mockery;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use PhpOffice\PhpSpreadsheet\Writer\Ods;
 use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -64,7 +69,8 @@ class NativeFlowMigrationTest extends TestCase
         ]);
 
         $this->get('http://siswa.example.test/')->assertOk()
-            ->assertSee('action="http://siswa.example.test"', false)->assertSee('Nomor induk')->assertSee('PIN');
+            ->assertSee('action="http://siswa.example.test"', false)->assertSee('Nomor induk')->assertSee('PIN')
+            ->assertSee('© '.now()->year, false)->assertSee('Dikembangkan oleh')->assertSee('Galih Aziz Wahyudi');
         $this->get('http://siswa.example.test/siswa/login')->assertRedirect('http://siswa.example.test');
         $this->post('http://siswa.example.test/', ['induk' => $student->induk, 'pin' => 'siswa123'])
             ->assertRedirect('http://siswa.example.test/siswa/kartu');
@@ -267,7 +273,8 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertSame(1, Attendance::query()->count());
         $this->assertDatabaseHas('absensi', ['id_siswa' => $student->id, 'tanggal' => '2026-09-28', 'status' => 'A']);
         $this->get('/staff?bulan=9&tahun=2026&kelas=X%20IPA%201')
-            ->assertOk()->assertSee('REKAP MINGGUAN')->assertSee('TOTAL BULANAN')->assertSee('Siswa Uji')->assertSee('Keterangan: - = Belum diisi, H = Hadir');
+            ->assertOk()->assertSee('REKAP MINGGUAN')->assertSee('TOTAL BULANAN')->assertSee('Siswa Uji')
+            ->assertSee('Keterangan:')->assertSee('- = Belum diisi')->assertSee('H = Hadir');
         $this->get('/data_siswa')->assertForbidden();
     }
 
@@ -281,7 +288,7 @@ class NativeFlowMigrationTest extends TestCase
         $page = $this->actingAs($user)->get('/staff?bulan=9&tahun=2026&kelas=X%20IPA%201')
             ->assertOk()->assertSee('value="" selected>-</option>', false)
             ->assertDontSee('value="H" selected', false);
-        $this->assertSame(4, substr_count($page->getContent(), '<td class="total">0</td>'));
+        $this->assertSame(5, preg_match_all('/<td class="total status-[a-z]+">0<\/td>/', $page->getContent()));
         $this->assertDatabaseMissing('absensi', ['id_siswa' => $student->id, 'tanggal' => '2026-09-28']);
 
         $payload = ['id_siswa' => $student->id, 'tanggal' => '2026-09-28', 'status' => ''];
@@ -359,6 +366,7 @@ class NativeFlowMigrationTest extends TestCase
 
     public function test_report_shows_daily_attendance_trend_against_previous_period(): void
     {
+        Carbon::setTestNow('2026-10-07 12:00:00');
         $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
         $student = Student::query()->create([
             'induk' => '8200001', 'nama' => 'Tren Hadir', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
@@ -367,14 +375,18 @@ class NativeFlowMigrationTest extends TestCase
             Attendance::query()->create(['id_siswa' => $student->id, 'tanggal' => $date, 'status' => 'H']);
         }
 
-        $this->actingAs($this->makeUser('kesiswaan'))
-            ->get('/laporan?periode=minggu&minggu=2026-10-07')
-            ->assertOk()
-            ->assertSee('PERBANDINGAN TREN')
-            ->assertSee('Periode ini (')
-            ->assertSee('05/10/2026–07/10/2026')
-            ->assertSee('28/09/2026–30/09/2026')
-            ->assertSee('Naik 100% per hari');
+        try {
+            $this->actingAs($this->makeUser('kesiswaan'))
+                ->get('/laporan?periode=minggu&minggu=2026-10-07')
+                ->assertOk()
+                ->assertSee('PERBANDINGAN TREN')
+                ->assertSee('Periode ini (')
+                ->assertSee('05/10/2026–07/10/2026')
+                ->assertSee('28/09/2026–30/09/2026')
+                ->assertSee('Naik 100% per hari');
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_mass_student_delete_by_class_grade_and_major_removes_attendance_and_photos(): void
@@ -535,9 +547,13 @@ class NativeFlowMigrationTest extends TestCase
         Attendance::query()->create(['id_siswa' => $student->id, 'tanggal' => '2026-09-28', 'status' => 'A']);
 
         $this->actingAs($user)->get('/alpha?periode=minggu&minggu=2026-09-28')
-            ->assertOk()->assertSee('Alpha Uji')->assertSee('28/09')->assertSee('Total alpha');
+            ->assertOk()->assertSee('Alpha Uji')->assertSee('28/09')->assertSee('Total alpha')
+            ->assertSee('<th class="table-row-number">No.</th>', false)
+            ->assertSee('<td class="table-row-number">1</td>', false);
         $this->get('/laporan?periode=minggu&minggu=2026-09-28')
-            ->assertOk()->assertSee('Rekap siswa')->assertSee('Alpha Uji')->assertSee('Grafik kehadiran')->assertSee('Ekspor Excel')->assertSee('Alpha terbanyak per rombel');
+            ->assertOk()->assertSee('Rekap siswa')->assertSee('Alpha Uji')->assertSee('Grafik kehadiran')->assertSee('Ekspor Excel')->assertSee('Alpha terbanyak per rombel')
+            ->assertSee('<th class="table-row-number">No.</th>', false)
+            ->assertSee('<td class="table-row-number">1</td>', false);
     }
 
     public function test_report_month_filters_show_month_names(): void
@@ -684,6 +700,199 @@ class NativeFlowMigrationTest extends TestCase
         $this->get('/data_siswa/'.$student->id.'/foto')
             ->assertOk()->assertHeader('Content-Type', 'image/jpeg');
         $this->assertFalse(Schema::hasColumn('siswa', 'foto_path'));
+    }
+
+    public function test_mass_student_photo_upload_matches_induk_within_the_selected_class(): void
+    {
+        Storage::fake('local');
+        $selectedClass = Classroom::query()->create(['nama' => 'X PPLG 1']);
+        $otherClass = Classroom::query()->create(['nama' => 'X TJKT 1']);
+        $student = Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Foto Massal', 'jenis_kelamin' => 'P', 'id_kelas' => $selectedClass->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654322', 'nama' => 'Foto Massal', 'jenis_kelamin' => 'P', 'id_kelas' => $otherClass->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa/foto/massal', [
+                'photo_scope' => 'class',
+                'photo_classroom_id' => $selectedClass->id,
+                'match_by' => 'induk',
+                'fotos' => [UploadedFile::fake()->image($student->induk.'.jpg')],
+            ])
+            ->assertRedirect(route('students.index'))
+            ->assertSessionHas('status', '1 foto siswa berhasil diunggah.');
+
+        $this->assertTrue(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
+    }
+
+    public function test_mass_student_photo_upload_matches_name_within_the_selected_major_and_grade(): void
+    {
+        Storage::fake('local');
+        $selectedClass = Classroom::query()->create(['nama' => 'X PPLG 1']);
+        $sameMajorOtherGrade = Classroom::query()->create(['nama' => 'XI PPLG 1']);
+        $otherMajorSameGrade = Classroom::query()->create(['nama' => 'X TJKT 1']);
+        $student = Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Nama Foto Massal', 'jenis_kelamin' => 'P', 'id_kelas' => $selectedClass->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654322', 'nama' => 'Nama Foto Massal', 'jenis_kelamin' => 'P', 'id_kelas' => $sameMajorOtherGrade->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654323', 'nama' => 'Nama Foto Massal', 'jenis_kelamin' => 'P', 'id_kelas' => $otherMajorSameGrade->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa/foto/massal', [
+                'photo_scope' => 'major_grade',
+                'photo_grade' => 'X',
+                'photo_major' => 'PPLG/RPL',
+                'match_by' => 'nama',
+                'fotos' => [UploadedFile::fake()->image('NAMA_FOTO_MAS.jpg')],
+            ])
+            ->assertRedirect(route('students.index'))
+            ->assertSessionHas('status', '1 foto siswa berhasil diunggah.');
+
+        $this->assertTrue(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654323.jpg'));
+    }
+
+    public function test_student_photo_bulk_form_selects_class_matching_current_class_search(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'X AKL 1']);
+        Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Siswa AKL', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->get('/data_siswa?status=aktif&cari=x+akl+1')
+            ->assertOk()
+            ->assertSee('<option value="'.$classroom->id.'" selected', false)
+            ->assertSee('student-photo-dropzone', false)
+            ->assertSee('data-student-photo-file-summary', false)
+            ->assertSee('data-student-photo-progress', false)
+            ->assertSee('Maks. 100 foto')
+            ->assertSee('Cocokkan nama file dengan')
+            ->assertSee('<th class="table-row-number">No.</th>', false)
+            ->assertSee('<td class="table-row-number">1</td>', false);
+
+        $this->get('/data_siswa/kartu/manual')
+            ->assertOk()
+            ->assertSee('<th class="table-row-number">No.</th>', false)
+            ->assertSee('<td class="table-row-number">1</td>', false);
+    }
+
+    public function test_student_record_is_not_saved_when_its_photo_cannot_be_processed(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+        $processor = Mockery::mock(StudentCardPhotoProcessor::class);
+        $processor->shouldReceive('optimizeForStorage')->once()->andReturn(null);
+        $this->app->instance(StudentCardPhotoProcessor::class, $processor);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa', [
+                'induk' => '7654329',
+                'nama' => 'Foto Tidak Tersimpan',
+                'jenis_kelamin' => 'P',
+                'id_kelas' => $classroom->id,
+                'foto' => UploadedFile::fake()->image('foto.jpg'),
+            ])
+            ->assertSessionHasErrors('foto');
+
+        $this->assertDatabaseMissing('siswa', ['induk' => '7654329']);
+    }
+
+    public function test_oversized_upload_request_returns_an_actionable_json_error(): void
+    {
+        Route::middleware('web')->post('/_test/oversized-upload', static function (): never {
+            throw new PostTooLargeException('The POST data is too large.');
+        });
+
+        $this->postJson('/_test/oversized-upload')
+            ->assertStatus(413)
+            ->assertJsonPath('message', 'Ukuran permintaan melewati batas upload hosting. Perkecil file atau naikkan post_max_size pada konfigurasi PHP.');
+    }
+
+    public function test_mass_student_photo_upload_prefers_exact_name_over_a_partial_name_match(): void
+    {
+        Storage::fake('local');
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+        $exactStudent = Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Amelia Putri', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654322', 'nama' => 'Amelia Putrianisa', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa/foto/massal', [
+                'photo_scope' => 'class',
+                'photo_classroom_id' => $classroom->id,
+                'match_by' => 'nama',
+                'fotos' => [UploadedFile::fake()->image('AMELIA_PUTRI.jpg')],
+            ])
+            ->assertRedirect(route('students.index'))
+            ->assertSessionHas('status', '1 foto siswa berhasil diunggah.');
+
+        $this->assertTrue(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
+    }
+
+    public function test_mass_student_photo_upload_returns_json_for_sequential_hosting_uploads(): void
+    {
+        Storage::fake('local');
+        $classroom = Classroom::query()->create(['nama' => 'XI IPA 1']);
+        $student = Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Foto JSON', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+
+        $response = $this->actingAs($this->makeUser('admin'))->call(
+            'POST',
+            '/data_siswa/foto/massal',
+            [
+                'photo_scope' => 'class',
+                'photo_classroom_id' => $classroom->id,
+                'match_by' => 'induk',
+            ],
+            [],
+            ['fotos' => [UploadedFile::fake()->image($student->induk.'.jpg')]],
+            ['HTTP_ACCEPT' => 'application/json']
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('student_id', $student->id);
+        $this->assertTrue(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+    }
+
+    public function test_mass_student_photo_upload_rejects_ambiguous_names(): void
+    {
+        Storage::fake('local');
+        $firstClass = Classroom::query()->create(['nama' => 'X IPA 1']);
+        $secondClass = Classroom::query()->create(['nama' => 'X IPA 2']);
+        Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Nama Kembar', 'jenis_kelamin' => 'P', 'id_kelas' => $firstClass->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654322', 'nama' => 'Nama Kembar', 'jenis_kelamin' => 'P', 'id_kelas' => $secondClass->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa/foto/massal', [
+                'photo_scope' => 'major_grade',
+                'photo_grade' => 'X',
+                'photo_major' => 'IPA',
+                'match_by' => 'nama',
+                'fotos' => [UploadedFile::fake()->image('Nama.jpg')],
+            ])
+            ->assertRedirect(route('students.index'))
+            ->assertSessionHas('warning');
+
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
     }
 
     public function test_student_card_pdf_photo_is_cropped_to_cover_without_stretching(): void
@@ -969,6 +1178,7 @@ class NativeFlowMigrationTest extends TestCase
 
     public function test_student_can_login_with_induk_and_only_access_their_card(): void
     {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Storage::fake('local');
         $classroom = Classroom::query()->create(['nama' => 'XII PS 1']);
         $firstStudent = Student::query()->create([
@@ -1051,9 +1261,16 @@ class NativeFlowMigrationTest extends TestCase
     public function test_admin_can_import_student_workbooks_transactionally(): void
     {
         $user = $this->makeUser('admin');
-        $classroom = Classroom::query()->create(['nama' => 'XII IPA 2']);
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 2']);
+        $outOfScopeClassroom = Classroom::query()->create(['nama' => 'XII IPS 1']);
         $existingStudent = Student::query()->create([
             'induk' => '7777', 'nama' => 'Calon Alumni', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
+        ]);
+        $outOfScopeStudent = Student::query()->create([
+            'induk' => '7776', 'nama' => 'Tetap Aktif Di Kelas Lain', 'jenis_kelamin' => 'P', 'id_kelas' => $outOfScopeClassroom->id,
+        ]);
+        $inScopeMissingStudent = Student::query()->create([
+            'induk' => '7775', 'nama' => 'Alumni Kelas Impor', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
         ]);
         Attendance::query()->create(['id_siswa' => $existingStudent->id, 'tanggal' => '2026-09-28', 'status' => 'H']);
         $oldClassroom = Classroom::query()->create(['nama' => 'XI IPA 2']);
@@ -1069,24 +1286,206 @@ class NativeFlowMigrationTest extends TestCase
             ['8889', 'Impor Uji', 'P'],
             ['6666', 'Siswa Naik Kelas', 'P'],
         ]);
+        $secondSheet = $workbook->createSheet();
+        $secondSheet->setTitle('XI IPA 7');
+        $secondSheet->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin'],
+            ['8890', 'Siswa Kelas Baru', 'L'],
+        ]);
         (new Xlsx($workbook))->save($path);
         $content = file_get_contents($path);
         unlink($path);
 
-        $this->actingAs($user)->post('/import_siswa', [
+        $progressToken = (string) \Illuminate\Support\Str::uuid();
+        $preview = $this->actingAs($user)->post('/import_siswa', [
             'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+            'progress_token' => $progressToken,
+        ])->assertOk()->assertViewHas('validCount', 4)
+            ->assertSee('data-import-upload-form', false)
+            ->assertSee('data-import-upload-progress', false)
+            ->assertSee('data-import-upload-meter', false)
+            ->assertSee('data-import-server-processing', false)
+            ->assertSee('Server sedang membaca sheet');
+        $this->assertSame(100, Cache::get('student-import-progress:'.$user->id.':'.$progressToken)['percent']);
+        $this->get(route('students.import.progress', $progressToken))
+            ->assertOk()
+            ->assertJsonPath('percent', 100)
+            ->assertJsonPath('stage', 'Pratinjau siap')
+            ->assertJsonPath('complete', true);
+        $otherUser = User::query()->create([
+            'username' => 'admin-lain',
+            'nama' => 'Admin Lain',
+            'role' => 'admin',
+            'password' => Hash::make('password123'),
+        ]);
+        $this->actingAs($otherUser)
+            ->get(route('students.import.progress', $progressToken))
+            ->assertOk()
+            ->assertContent('null');
+        $this->actingAs($user);
+        $selectedRows = array_values(array_filter(
+            array_column($preview->viewData('previewRows'), 'record_id'),
+            static fn ($id): bool => $id !== null
+        ));
+        $baseTransactionLevel = DB::transactionLevel();
+        $classInsertTransactionLevel = null;
+        DB::listen(static function ($query) use (&$classInsertTransactionLevel): void {
+            if ($classInsertTransactionLevel === null && preg_match('/\binsert\b.*\bkelas\b/i', $query->sql) === 1) {
+                $classInsertTransactionLevel = DB::transactionLevel();
+            }
+        });
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => $selectedRows,
+            'sync_alumni' => '1',
         ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+        $this->assertSame($baseTransactionLevel, $classInsertTransactionLevel);
 
         $this->assertDatabaseHas('siswa', ['induk' => '8888', 'nama' => 'Impor Uji', 'jenis_kelamin' => 'P']);
-        $this->assertDatabaseMissing('siswa', ['induk' => '8889']);
-        $this->assertSame(1, Student::query()->where('nama', 'Impor Uji')->count());
+        $this->assertDatabaseHas('siswa', ['induk' => '8889', 'nama' => 'Impor Uji']);
+        $this->assertDatabaseHas('siswa', ['induk' => '8890', 'nama' => 'Siswa Kelas Baru']);
+        $this->assertSame(2, Student::query()->where('nama', 'Impor Uji')->count());
         $this->assertDatabaseHas('kelas', ['nama' => 'X IPA 2']);
         $this->assertDatabaseHas('siswa', ['induk' => '7777', 'is_alumni' => true]);
+        $this->assertDatabaseHas('siswa', ['induk' => '7775', 'is_alumni' => true]);
+        $this->assertDatabaseHas('siswa', ['id' => $outOfScopeStudent->id, 'is_alumni' => false]);
         $this->assertDatabaseHas('absensi', ['id_siswa' => $existingStudent->id, 'tanggal' => '2026-09-28', 'status' => 'H']);
         $newClassroom = Classroom::query()->where('nama', 'X IPA 2')->firstOrFail();
         $this->assertDatabaseHas('siswa', [
             'id' => $promotedStudent->id, 'induk' => '6666', 'id_kelas' => $newClassroom->id, 'is_alumni' => false,
         ]);
+    }
+
+    public function test_student_import_rejects_workbooks_without_student_sheets(): void
+    {
+        $workbook = new Spreadsheet;
+        $workbook->getActiveSheet()->setTitle('Template');
+        $path = tempnam(sys_get_temp_dir(), 'student-import-template-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $this->from('/import_siswa')->actingAs($this->makeUser('admin'))
+            ->post('/import_siswa', [
+                'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+            ])
+            ->assertRedirect('/import_siswa')
+            ->assertSessionHasErrors('excel');
+
+        $this->assertSame(0, Student::query()->count());
+    }
+
+    public function test_student_import_marks_every_repeated_student_number_as_invalid(): void
+    {
+        $workbook = new Spreadsheet;
+        $workbook->getActiveSheet()->setTitle('X IPA 1');
+        $workbook->getActiveSheet()->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin'],
+            ['001234', 'Siswa Pertama', 'L'],
+            ['001234', 'Siswa Kedua', 'P'],
+            ['001234', 'Siswa Ketiga', ''],
+            ['001235', 'Nama Sama', 'P'],
+            ['001236', 'Nama Sama', 'P'],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'student-import-duplicate-induk-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 2)->assertViewHas('invalidCount', 3)
+            ->assertSee('data-import-page-size', false)
+            ->assertSee('data-import-filter-search', false)
+            ->assertSee('data-import-select-valid-all', false)
+            ->assertSee('Pilih semua siswa valid (2)')
+            ->assertSee('Pilih semua baris valid di halaman ini');
+
+        $rows = $preview->viewData('previewRows');
+        $this->assertNull($rows[0]['record_id']);
+        $this->assertNull($rows[1]['record_id']);
+        $this->assertNull($rows[2]['record_id']);
+        $this->assertStringContainsString('Nomor induk duplikat', implode(' ', $rows[0]['errors']));
+        $this->assertStringContainsString('Nomor induk duplikat', implode(' ', $rows[2]['errors']));
+        $this->assertSame(2, count(array_filter($rows, static fn (array $row): bool => $row['nama'] === 'Nama Sama' && $row['record_id'] !== null)));
+        $this->assertDatabaseMissing('siswa', ['induk' => '001234']);
+    }
+
+    public function test_student_import_preserves_formatted_leading_zeroes_and_common_headers(): void
+    {
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('X IPA 1');
+        $sheet->fromArray([
+            ['No. Induk', 'Nama Lengkap', 'JK'],
+            [1234, 'Siswa Nol Depan', 'Perempuan'],
+        ]);
+        $sheet->getStyle('A2')->getNumberFormat()->setFormatCode('000000');
+        $path = tempnam(sys_get_temp_dir(), 'student-import-leading-zero-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 1);
+
+        $this->assertSame('001234', $preview->viewData('previewRows')[0]['induk']);
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => [0],
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+        $this->assertDatabaseHas('siswa', ['induk' => '001234', 'nama' => 'Siswa Nol Depan']);
+    }
+
+    public function test_import_preview_saves_only_selected_rows_and_does_not_mark_others_as_alumni(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'XI IPA 3']);
+        $unselectedStudent = Student::query()->create([
+            'induk' => '7100', 'nama' => 'Siswa Tetap Aktif', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('XI IPA 3');
+        $sheet->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin'],
+            ['7101', 'Siswa Dipilih', 'L'],
+            ['7102', 'Siswa Tidak Dipilih', 'P'],
+            ['7103', 'Data Tidak Lengkap', ''],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'student-import-preview-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 2)->assertViewHas('invalidCount', 1);
+        $preview->assertSee('data-import-filter-class', false)
+            ->assertSee('data-import-filter-grade', false)
+            ->assertSee('data-import-filter-prefix', false)
+            ->assertSee('data-import-filter-status', false)
+            ->assertSee('data-import-filter-search', false)
+            ->assertSee('data-import-page-size', false)
+            ->assertSee('data-import-preview-body', false)
+            ->assertSee('data-import-previous', false)
+            ->assertSee('data-import-select-valid-all', false)
+            ->assertDontSee('<tr data-import-preview-row', false)
+            ->assertSee('Pilih semua baris valid di halaman ini')
+            ->assertSee('Siswa Dipilih')
+            ->assertSee('XI IPA 3');
+
+        $this->assertDatabaseMissing('siswa', ['induk' => '7101']);
+        $this->assertDatabaseMissing('siswa', ['induk' => '7102']);
+
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => [0],
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+
+        $this->assertDatabaseHas('siswa', ['induk' => '7101', 'nama' => 'Siswa Dipilih']);
+        $this->assertDatabaseMissing('siswa', ['induk' => '7102']);
+        $this->assertDatabaseHas('siswa', ['id' => $unselectedStudent->id, 'is_alumni' => false]);
     }
 
     public function test_student_import_batches_database_work_for_large_workbooks(): void
@@ -1103,23 +1502,76 @@ class NativeFlowMigrationTest extends TestCase
         $content = file_get_contents($path);
         unlink($path);
 
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 120);
+        $selectedRows = array_values(array_filter(
+            array_column($preview->viewData('previewRows'), 'record_id'),
+            static fn ($id): bool => $id !== null
+        ));
+
         $countQueries = false;
         $studentQueries = 0;
+        $unfilteredStudentReads = 0;
         DB::listen(static function ($query) use (&$countQueries, &$studentQueries): void {
             if ($countQueries && preg_match('/(?:siswa|kelas)/i', $query->sql) === 1) {
                 $studentQueries++;
             }
         });
+        DB::listen(static function ($query) use (&$countQueries, &$unfilteredStudentReads): void {
+            if (
+                $countQueries
+                && preg_match('/^\s*select\b/i', $query->sql) === 1
+                && preg_match('/\bfrom\s+[`"]?siswa\b/i', $query->sql) === 1
+                && preg_match('/\bwhere\b/i', $query->sql) !== 1
+            ) {
+                $unfilteredStudentReads++;
+            }
+        });
         $countQueries = true;
 
-        $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
-            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => $selectedRows,
         ])->assertRedirect('/import_siswa')->assertSessionHas('status');
         $countQueries = false;
 
         $this->assertSame(120, Student::query()->where('nama', 'like', 'Siswa Impor %')->count());
         $this->assertLessThanOrEqual(10, $studentQueries, 'Import should use a bounded number of database queries.');
+        $this->assertSame(0, $unfilteredStudentReads, 'Import should only read student records relevant to the workbook.');
         $this->assertTrue(Hash::check('siswa123', (string) Student::query()->where('induk', '90001')->value('portal_pin')));
+    }
+
+    public function test_large_student_import_syncs_alumni_without_loading_the_full_roster(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 2']);
+        $missingStudent = Student::query()->create([
+            'induk' => '999999', 'nama' => 'Tidak Ada Di Workbook', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
+        ]);
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('X IPA 2');
+        $sheet->fromArray([['Nomor Induk', 'Nama', 'Jenis Kelamin']]);
+        for ($index = 1; $index <= 401; $index++) {
+            $sheet->fromArray([[(string) (950000 + $index), 'Siswa Sinkron '.$index, 'P']], null, 'A'.($index + 1));
+        }
+        $path = tempnam(sys_get_temp_dir(), 'student-import-sync-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 401);
+
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => range(0, 400),
+            'sync_alumni' => '1',
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+
+        $this->assertSame(401, Student::query()->where('nama', 'like', 'Siswa Sinkron %')->count());
+        $this->assertDatabaseHas('siswa', ['id' => $missingStudent->id, 'is_alumni' => true]);
     }
 
     public function test_admin_can_import_legacy_xls_workbooks(): void
@@ -1135,13 +1587,42 @@ class NativeFlowMigrationTest extends TestCase
         $content = file_get_contents($path);
         unlink($path);
 
-        $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
             'excel' => UploadedFile::fake()->createWithContent('siswa.xls', $content),
+        ])->assertOk()->assertViewHas('validCount', 1);
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => [0],
         ])->assertRedirect('/import_siswa')->assertSessionHas('status');
 
         $this->assertDatabaseHas('siswa', [
             'induk' => '9911', 'nama' => 'Siswa XLS', 'jenis_kelamin' => 'L',
         ]);
+    }
+
+    public function test_admin_can_preview_and_import_ods_workbooks(): void
+    {
+        $workbook = new Spreadsheet;
+        $workbook->getActiveSheet()->setTitle('X IPA 1');
+        $workbook->getActiveSheet()->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin'],
+            ['9921', 'Siswa ODS', 'P'],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'student-import-ods-');
+        (new Ods($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.ods', $content),
+        ])->assertOk()->assertViewHas('validCount', 1);
+
+        $this->assertDatabaseMissing('siswa', ['induk' => '9921']);
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => [0],
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+        $this->assertDatabaseHas('siswa', ['induk' => '9921', 'nama' => 'Siswa ODS']);
     }
 
     public function test_staff_can_manage_major_groups_and_related_majors(): void
@@ -1377,7 +1858,8 @@ class NativeFlowMigrationTest extends TestCase
 
         $nextPage = $this->getJson('/staff?bulan=9&tahun=2026&kelas=X%20IPA%201&minggu_tabel=2026-09-28&page=2');
         $nextPage->assertOk()->assertJsonPath('count', 1)->assertJsonPath('nextPageUrl', null);
-        $this->assertSame(1, substr_count($nextPage->json('html'), 'class="attendance-select"'));
+        $this->assertSame(3, substr_count($nextPage->json('html'), 'class="attendance-select"'));
+        $this->assertStringContainsString('<td class="no">51</td>', $nextPage->json('html'));
     }
 
     public function test_excel_and_a4_exports_return_real_workbooks(): void
@@ -1401,9 +1883,28 @@ class NativeFlowMigrationTest extends TestCase
             $this->assertSame('H', $regularSheet->getCell('D4')->getValue());
             $this->assertSame('-', $regularSheet->getCell('E4')->getValue());
             $this->assertSame('D9F2DF', $regularSheet->getStyle('B4')->getFill()->getStartColor()->getRGB());
+            $this->assertFalse($regularSheet->getColumnDimension('B')->getAutoSize());
+            $this->assertSame(32.0, $regularSheet->getColumnDimension('B')->getWidth());
+            $this->assertFalse($regularWorkbook->getSheetByName('Siswa Alfa')->getColumnDimension('B')->getAutoSize());
         } finally {
             if (is_file($regularPath)) {
                 unlink($regularPath);
+            }
+        }
+        $classExport = $this->get('/export_excel?tipe=minggu&minggu=2026-09-28&kelas=X%20IPA%203')
+            ->assertOk()->getContent();
+        $classPath = tempnam(sys_get_temp_dir(), 'class-export-');
+        file_put_contents($classPath, $classExport);
+        try {
+            $classWorkbook = IOFactory::load($classPath);
+            $classSheet = $classWorkbook->getSheetByName('Rekap');
+            $this->assertSame('X IPA 3', $classSheet->getCell('D4')->getValue());
+            $this->assertSame(32.0, $classSheet->getColumnDimension('B')->getWidth());
+            $this->assertSame(9.0, $classSheet->getColumnDimension('E')->getWidth());
+            $this->assertFalse($classSheet->getColumnDimension('E')->getAutoSize());
+        } finally {
+            if (is_file($classPath)) {
+                unlink($classPath);
             }
         }
         $this->get('/export_a4?dari=2026-09-28&format=xlsx')
@@ -1440,7 +1941,7 @@ class NativeFlowMigrationTest extends TestCase
             $this->assertSame('Siswa IRMA', $sheet->getCell('B6')->getValue());
             $this->assertNull($sheet->getCell('D6')->getValue());
             $this->assertSame('D9F2DF', $sheet->getStyle('B6')->getFill()->getStartColor()->getRGB());
-            $this->assertSame('E5EFFF', $sheet->getStyle('B9')->getFill()->getStartColor()->getRGB());
+            $this->assertSame('E5EFFF', $sheet->getStyle('B12')->getFill()->getStartColor()->getRGB());
             $this->assertSame(PageSetup::PAPERSIZE_A4, $sheet->getPageSetup()->getPaperSize());
             $this->assertSame(PageSetup::ORIENTATION_PORTRAIT, $sheet->getPageSetup()->getOrientation());
             $this->assertTrue($sheet->getPageSetup()->getFitToPage());
@@ -1529,6 +2030,32 @@ class NativeFlowMigrationTest extends TestCase
             'id_kelas' => $classroom->id,
             'kategori' => 'lainnya',
         ])->assertSessionHasErrors('kategori');
+    }
+
+    public function test_student_number_must_be_unique_but_same_name_can_be_registered_twice(): void
+    {
+        $admin = $this->makeUser('admin');
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 9']);
+        Student::query()->create([
+            'induk' => '8391', 'nama' => 'Nama Kembar', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+        $this->actingAs($admin);
+
+        $this->from('/data_siswa')->post('/data_siswa', [
+            'induk' => '8391',
+            'nama' => 'Nomor Terduplikasi',
+            'jenis_kelamin' => 'L',
+            'id_kelas' => $classroom->id,
+        ])->assertRedirect('/data_siswa')->assertSessionHasErrors('induk');
+
+        $this->post('/data_siswa', [
+            'induk' => '8392',
+            'nama' => 'Nama Kembar',
+            'jenis_kelamin' => 'P',
+            'id_kelas' => $classroom->id,
+        ])->assertRedirect('/data_siswa');
+
+        $this->assertSame(2, Student::query()->where('nama', 'Nama Kembar')->count());
     }
 
     public function test_admin_can_manage_classes_students_and_users(): void

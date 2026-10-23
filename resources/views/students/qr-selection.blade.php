@@ -27,7 +27,7 @@
     <p class="filter-feedback" data-qr-selection-status role="status" aria-live="polite"></p>
     <div class="table-wrap" data-student-table-wrap>
         <table>
-            <thead><tr><th>Pilih</th><th>Induk</th><th class="sticky-name">Nama</th><th>Kelas</th></tr></thead>
+            <thead><tr><th>Pilih</th><th class="table-row-number">No.</th><th>Induk</th><th class="sticky-name">Nama</th><th>Kelas</th></tr></thead>
             <tbody data-student-table-body>@include('students._qr_selection_rows', ['students' => $students])</tbody>
         </table>
         <div class="student-load-trigger" data-student-load-trigger @if(! $students->hasMorePages()) hidden @endif>

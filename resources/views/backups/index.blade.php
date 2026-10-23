@@ -72,11 +72,12 @@
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Waktu</th><th>Dibuat oleh</th><th>Jumlah data</th><th>File</th><th>Aksi</th></tr>
+                <tr><th class="table-row-number">No.</th><th>Waktu</th><th>Dibuat oleh</th><th>Jumlah data</th><th>File</th><th>Aksi</th></tr>
             </thead>
             <tbody>
-                @forelse($archives as $archive)
+                @forelse($archives as $index => $archive)
                     <tr>
+                        <td class="table-row-number">{{ (($archives->currentPage('backups') - 1) * $archives->perPage()) + $index + 1 }}</td>
                         <td>{{ \Illuminate\Support\Carbon::parse($archive->created_at)->format('d/m/Y H:i:s') }}</td>
                         <td>{{ $archive->creator_name ?? 'Sistem' }}</td>
                         <td>{{ number_format((int) $archive->record_count, 0, ',', '.') }} baris</td>
@@ -93,7 +94,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5">Belum ada backup. Buat backup pertama sebelum melakukan perubahan besar.</td></tr>
+                    <tr><td colspan="6">Belum ada backup. Buat backup pertama sebelum melakukan perubahan besar.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -108,11 +109,12 @@
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Waktu</th><th>Pengguna</th><th>Aktivitas</th><th>Status</th><th>Detail</th></tr>
+                <tr><th class="table-row-number">No.</th><th>Waktu</th><th>Pengguna</th><th>Aktivitas</th><th>Status</th><th>Detail</th></tr>
             </thead>
             <tbody>
-                @forelse($logs as $log)
+                @forelse($logs as $index => $log)
                     <tr>
+                        <td class="table-row-number">{{ (($logs->currentPage('logs') - 1) * $logs->perPage()) + $index + 1 }}</td>
                         <td>{{ \Illuminate\Support\Carbon::parse($log->created_at)->format('d/m/Y H:i:s') }}</td>
                         <td>{{ $log->actor_name ?? ($log->action === 'scheduled_backup' ? 'Sistem' : 'Pengguna tidak tersedia') }}</td>
                         <td>
@@ -128,7 +130,7 @@
                         <td>{{ $log->summary }} @if($log->filename)<code>{{ $log->filename }}</code>@endif</td>
                     </tr>
                 @empty
-                    <tr><td colspan="5">Belum ada aktivitas backup atau pemulihan.</td></tr>
+                    <tr><td colspan="6">Belum ada aktivitas backup atau pemulihan.</td></tr>
                 @endforelse
             </tbody>
         </table>

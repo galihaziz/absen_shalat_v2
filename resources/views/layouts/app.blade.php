@@ -123,6 +123,12 @@
     @if($errors->any()) <div class="notice error"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div> @endif
     @yield('content')
 </main>
+<footer class="site-footer">
+    <div class="site-footer-content">
+        <span>© {{ now()->year }} Rekap Absensi Solat</span>
+        <span>Dikembangkan oleh <strong>Galih Aziz Wahyudi</strong></span>
+    </div>
+</footer>
 @stack('scripts')
 <script>
 const mobileMenuButton = document.querySelector('.mobile-nav-toggle');

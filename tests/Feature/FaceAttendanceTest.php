@@ -26,7 +26,7 @@ class FaceAttendanceTest extends TestCase
             ->assertSee('Scan Wajah')
             ->assertSee('face-detection-guide')
             ->assertSee('faceDetectorMetrics')
-            ->assertSee('Kamera akan dibuka otomatis')
+            ->assertSee('Kamera belum aktif')
             ->assertSee('diam sampai hasil scan muncul')
             ->assertDontSee('faceStudentInduk');
         $this->get('/data_siswa')

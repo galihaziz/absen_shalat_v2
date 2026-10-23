@@ -271,16 +271,21 @@ class ExportController extends Controller
             array_push($headers, 'TOTAL A', 'TOTAL I', 'TOTAL S', 'TOTAL H', 'TOTAL M (HAID)');
             $rows[] = $headers;
             foreach ($classStudents as $index => $student) {
-                $dayValues = array_map(fn (DateTimeImmutable $date) => $attendance[$student->id][$date->format('Y-m-d')] ?? '-', $dates);
-                $dayStatuses = array_map(fn (DateTimeImmutable $date) => $attendance[$student->id][$date->format('Y-m-d')] ?? '', $dates);
+                $dayValues = [];
+                $totals = ['A' => 0, 'I' => 0, 'S' => 0, 'H' => 0, 'M' => 0];
+                foreach ($dates as $date) {
+                    $status = $attendance[$student->id][$date->format('Y-m-d')] ?? '';
+                    $dayValues[] = $status !== '' ? $status : '-';
+                    if (isset($totals[$status])) {
+                        $totals[$status]++;
+                    }
+                }
                 $row = [$index + 1, $student->nama, $student->jenis_kelamin];
                 if ($includeClass) {
                     $row[] = $student->classroom->nama;
                 }
                 array_push($row, ...$dayValues);
-                foreach (['A', 'I', 'S', 'H', 'M'] as $status) {
-                    $row[] = count(array_filter($dayStatuses, fn ($item) => $item === $status));
-                }
+                array_push($row, ...array_values($totals));
                 if ($student->is_irma || $student->is_nonis) {
                     $highlightRows[count($rows) + 1] = $student->is_nonis ? 'E5EFFF' : 'D9F2DF';
                 }
@@ -289,8 +294,20 @@ class ExportController extends Controller
         }
 
         $columnCount = $this->writeAttendanceRows($sheet, $rows, $highlightRows);
-        for ($column = 1; $column <= $columnCount; $column++) {
-            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($column))->setAutoSize(true);
+        $sheet->getColumnDimension('A')->setWidth(7);
+        $sheet->getColumnDimension('B')->setWidth(32);
+        $sheet->getColumnDimension('C')->setWidth(8);
+        $column = 4;
+        if ($includeClass) {
+            $sheet->getColumnDimension('D')->setWidth(18);
+            $column++;
+        }
+        $dateColumnCount = count($dates);
+        for ($index = 0; $index < $dateColumnCount; $index++, $column++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($column))->setWidth(9);
+        }
+        for ($index = $column; $index <= $columnCount; $index++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($index))->setWidth(13);
         }
     }
 
@@ -300,13 +317,28 @@ class ExportController extends Controller
         $sheet->setTitle('Siswa Alfa');
         $rows = [['Siswa Alfa - '.$periodLabel]];
         $highlightRows = [];
-        $alphaStudents = $students->filter(fn (Student $student) => collect($dates)->contains(fn (DateTimeImmutable $date) => ($attendance[$student->id][$date->format('Y-m-d')] ?? '') === 'A'));
+        $dateKeys = array_map(static fn (DateTimeImmutable $date): string => $date->format('Y-m-d'), $dates);
+        $alphaStudents = $students->filter(static function (Student $student) use ($attendance, $dateKeys): bool {
+            foreach ($dateKeys as $dateKey) {
+                if (($attendance[$student->id][$dateKey] ?? '') === 'A') {
+                    return true;
+                }
+            }
+
+            return false;
+        });
         foreach ($alphaStudents->groupBy(fn (Student $student) => $student->classroom->nama) as $class => $classStudents) {
             $rows[] = ['KELAS '.$class];
             $rows[] = ['NO', 'NAMA', 'L/P', 'KELAS', ...array_map(fn (DateTimeImmutable $date) => $date->format('d/m'), $dates), 'TOTAL A'];
             foreach ($classStudents as $index => $student) {
-                $statuses = array_map(fn (DateTimeImmutable $date) => $attendance[$student->id][$date->format('Y-m-d')] ?? '-', $dates);
-                $rows[] = [$index + 1, $student->nama, $student->jenis_kelamin, $class, ...$statuses, count(array_filter($statuses, fn ($status) => $status === 'A'))];
+                $statuses = [];
+                $alphaCount = 0;
+                foreach ($dateKeys as $dateKey) {
+                    $status = $attendance[$student->id][$dateKey] ?? '';
+                    $statuses[] = $status !== '' ? $status : '-';
+                    $alphaCount += (int) ($status === 'A');
+                }
+                $rows[] = [$index + 1, $student->nama, $student->jenis_kelamin, $class, ...$statuses, $alphaCount];
                 if ($student->is_irma || $student->is_nonis) {
                     $highlightRows[count($rows)] = $student->is_nonis ? 'E5EFFF' : 'D9F2DF';
                 }
@@ -318,8 +350,14 @@ class ExportController extends Controller
             $rows[] = ['Tidak ada siswa alfa pada minggu ini.'];
         }
         $columnCount = $this->writeAttendanceRows($sheet, $rows, $highlightRows);
-        foreach (range('A', Coordinate::stringFromColumnIndex($columnCount)) as $column) {
-            $sheet->getColumnDimension($column)->setAutoSize(true);
+        foreach (['A' => 7, 'B' => 32, 'C' => 8, 'D' => 18] as $column => $width) {
+            $sheet->getColumnDimension($column)->setWidth($width);
+        }
+        for ($column = 5; $column <= $columnCount - 1; $column++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($column))->setWidth(9);
+        }
+        if ($columnCount >= 5) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($columnCount))->setWidth(13);
         }
     }
 

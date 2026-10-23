@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/data_siswa/kartu/manual', [StudentController::class, 'qrSelection'])->name('students.qr.selection');
         Route::post('/data_siswa', [StudentController::class, 'store'])->name('students.store');
         Route::post('/data_siswa/foto', [StudentController::class, 'storePhoto'])->name('students.photo.store');
+        Route::post('/data_siswa/foto/massal', [StudentController::class, 'storePhotosMass'])->name('students.photo.mass');
         Route::post('/data_siswa/{student}/pin/reset', [StudentController::class, 'resetPortalPin'])->name('students.pin.reset');
         Route::get('/data_siswa/{student}/qr', [StudentController::class, 'qr'])->middleware('throttle:60,1')->name('students.qr');
         Route::get('/data_siswa/{student}/qr.pdf', [StudentController::class, 'qrPdf'])->middleware('throttle:5,1')->name('students.qr.pdf');
@@ -112,5 +113,10 @@ Route::middleware('auth')->group(function () {
         Route::delete('/data_user/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::get('/import_siswa', [ImportController::class, 'create'])->name('students.import');
         Route::post('/import_siswa', [ImportController::class, 'store'])->middleware('throttle:5,1')->name('students.import.store');
+        Route::get('/import_siswa/progres/{progressToken}', [ImportController::class, 'progress'])
+            ->where('progressToken', '[0-9a-fA-F-]{36}')
+            ->middleware('throttle:120,1')
+            ->name('students.import.progress');
+        Route::post('/import_siswa/konfirmasi', [ImportController::class, 'confirm'])->middleware('throttle:5,1')->name('students.import.confirm');
     });
 });

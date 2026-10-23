@@ -13,7 +13,7 @@
     <div class="student-management-column">
     <section class="panel management-panel"><details id="studentCreate" class="management-disclosure" @if($editing || $errors->any()) open @endif>
         <summary>{{ $editing ? 'Ubah data siswa' : 'Tambah siswa' }}@unless($editing)<small>Formulir siswa baru</small>@endunless</summary>
-        <form class="stack-form" method="post" action="{{ route('students.store') }}" enctype="multipart/form-data">@csrf
+        <form class="stack-form" method="post" action="{{ route('students.store') }}" enctype="multipart/form-data" data-student-photo-compress>@csrf
             <input type="hidden" name="id" value="{{ old('id', $editing?->id) }}">
             <label>Nomor induk<input name="induk" value="{{ old('induk', $editing?->induk) }}" inputmode="numeric" required></label>
             <label>Nama lengkap<input name="nama" value="{{ old('nama', $editing?->nama) }}" required></label>
@@ -38,6 +38,7 @@
                 <p class="delete-feedback">Foto siswa belum tersedia.</p>
             @endif
             <label>Foto siswa (opsional)<input type="file" name="foto" accept=".jpg,.jpeg,.png,.webp"></label>
+            <p class="filter-feedback" data-student-photo-upload-status role="status" aria-live="polite"></p>
             <div class="actions"><button class="button primary" type="submit">{{ $editing ? 'Simpan perubahan' : 'Tambah siswa' }}</button>@if($editing)<a class="button quiet" href="{{ route('students.index') }}">Batal</a>@endif</div>
         </form>
     </details></section>
@@ -160,14 +161,87 @@
             <button class="button primary" type="submit">Tambah grup</button>
         </form>
     </details></section>
-    <section class="panel compact-panel">
-        <h2>Foto siswa</h2>
-        <form class="filters" method="post" action="{{ route('students.photo.store') }}" enctype="multipart/form-data">
-            @csrf
-            <label>Nomor induk<input name="induk" inputmode="numeric" pattern="[0-9]+" maxlength="30" required></label>
-            <label>Foto siswa<input type="file" name="foto" accept=".jpg,.jpeg,.png,.webp" required></label>
-            <button class="button primary" type="submit">Simpan foto</button>
-        </form>
+    <section class="panel compact-panel student-photo-panel">
+        <div class="student-photo-panel-heading">
+            <p class="eyebrow">FOTO PROFIL</p>
+            <h2>Unggah foto siswa</h2>
+            <p>Tambahkan foto satu siswa atau unggah beberapa foto sekaligus. Foto otomatis diperkecil sebelum disimpan.</p>
+        </div>
+        <div class="student-photo-single">
+            <div>
+                <h3>Unggah satu foto</h3>
+                <p>Untuk mengganti atau menambahkan foto seorang siswa.</p>
+            </div>
+            <form class="filters student-photo-single-form" method="post" action="{{ route('students.photo.store') }}" enctype="multipart/form-data" data-student-photo-compress>
+                @csrf
+                <label>Nomor induk<input name="induk" inputmode="numeric" pattern="[0-9]+" maxlength="30" placeholder="Contoh: 123456" required></label>
+                <label>File foto<input type="file" name="foto" accept=".jpg,.jpeg,.png,.webp" required></label>
+                <button class="button primary" type="submit">Simpan foto</button>
+                <p class="filter-feedback" data-student-photo-upload-status role="status" aria-live="polite"></p>
+            </form>
+        </div>
+
+        <div class="student-photo-bulk">
+            <div class="student-photo-bulk-heading">
+                <div>
+                    <h3>Unggah banyak foto</h3>
+                    <p>Pilih kelas atau jurusan per angkatan, lalu unggah foto yang nama filenya berisi nomor induk atau nama siswa.</p>
+                </div>
+                <span class="student-photo-limit">Maks. 100 foto</span>
+            </div>
+            <ol class="student-photo-steps">
+                <li><strong>Atur pencocokan</strong><span>Tentukan apakah nama file berisi nomor induk atau nama.</span></li>
+                <li><strong>Pilih kelompok</strong><span>Batasi pencarian ke kelas atau jurusan dan angkatan.</span></li>
+                <li><strong>Pilih foto</strong><span>Pastikan tiap foto memiliki nama file yang sesuai.</span></li>
+            </ol>
+            <form class="student-photo-bulk-form" method="post" action="{{ route('students.photo.mass') }}" enctype="multipart/form-data" data-student-photo-bulk>
+                @csrf
+                <div class="student-photo-options">
+                    <label>Cocokkan nama file dengan
+                        <select name="match_by" data-photo-match-by>
+                            <option value="induk">Nomor induk</option>
+                            <option value="nama">Nama siswa</option>
+                        </select>
+                    </label>
+                    <label>Kelompok siswa
+                        <select name="photo_scope" data-photo-bulk-scope>
+                            <option value="class">Satu kelas</option>
+                            <option value="major_grade">Satu jurusan per angkatan</option>
+                        </select>
+                    </label>
+                    <label data-photo-bulk-target="class">Kelas
+                        <select name="photo_classroom_id">
+                            @foreach($classes as $class)<option value="{{ $class->id }}" @selected((string) $photoDefaultClassroomId === (string) $class->id)>{{ $class->nama }}</option>@endforeach
+                        </select>
+                    </label>
+                    <label data-photo-bulk-target="major_grade" hidden>Angkatan
+                        <select name="photo_grade" disabled>
+                            @foreach($grades as $grade)<option value="{{ $grade }}">Kelas {{ $grade }}</option>@endforeach
+                        </select>
+                    </label>
+                    <label data-photo-bulk-target="major_grade" hidden>Jurusan
+                        <select name="photo_major" disabled>
+                            @foreach($majors as $major)<option value="{{ $major }}">{{ $major }}</option>@endforeach
+                        </select>
+                    </label>
+                </div>
+                <p class="student-photo-match-help" data-photo-match-help>Contoh nama file: <strong>123456.jpg</strong>. Pastikan nomor induk pada nama file sesuai dengan data siswa.</p>
+                <label class="student-photo-dropzone">
+                    <input type="file" name="fotos[]" accept=".jpg,.jpeg,.png,.webp" multiple required data-student-photo-files aria-describedby="studentPhotoFileHint">
+                    <span class="student-photo-dropzone-icon" aria-hidden="true">↑</span>
+                    <span class="student-photo-dropzone-title">Pilih foto dari perangkat</span>
+                    <span class="student-photo-dropzone-hint" id="studentPhotoFileHint">Klik atau seret foto ke area ini · JPG, PNG, atau WebP</span>
+                </label>
+                <div class="student-photo-file-summary" data-student-photo-file-summary aria-live="polite">Belum ada foto dipilih.</div>
+                <ul class="student-photo-file-list" data-student-photo-file-list hidden></ul>
+                <div class="student-photo-upload-progress" data-student-photo-progress-wrap hidden>
+                    <progress max="100" value="0" data-student-photo-progress aria-label="Progres unggah foto"></progress>
+                </div>
+                <p class="student-photo-compression-note">Foto dikompres otomatis di bawah 100 KiB dan diunggah satu per satu agar lebih stabil, termasuk saat koneksi hosting lambat.</p>
+                <button class="button primary student-photo-submit" type="submit" data-student-photo-submit disabled>Pilih foto untuk mulai</button>
+                <p class="student-photo-upload-status" data-student-photo-bulk-status role="status" aria-live="polite"></p>
+            </form>
+        </div>
     </section>
     </div>
     <section class="panel student-list-panel" data-student-list data-next-page="{{ $students->nextPageUrl() }}">
@@ -228,7 +302,7 @@
         </form>
         @error('student_ids')<p class="filter-feedback" role="alert">{{ $message }}</p>@enderror
     @endif
-    <div class="table-wrap" data-student-table-wrap><table><thead><tr>@if($showingAlumni)<th><span class="visually-hidden">Pilih</span></th>@endif<th>Induk</th><th class="sticky-name">Nama</th><th>L/P</th><th>Kelas</th><th>Kategori</th><th>Aksi</th></tr></thead><tbody data-student-table-body>
+    <div class="table-wrap" data-student-table-wrap><table><thead><tr>@if($showingAlumni)<th><span class="visually-hidden">Pilih</span></th>@endif<th class="table-row-number">No.</th><th>Induk</th><th class="sticky-name">Nama</th><th>L/P</th><th>Kelas</th><th>Kategori</th><th>Aksi</th></tr></thead><tbody data-student-table-body>
     @include('students._rows', ['students' => $students, 'showingAlumni' => $showingAlumni])
     </tbody></table><div class="student-load-trigger" data-student-load-trigger @if(! $students->hasMorePages()) hidden @endif><span class="loading-feedback" data-student-load-status role="status" aria-live="polite"></span><button class="button quiet small" type="button" data-student-load-button>Muat data berikutnya</button></div></div>
 </section>
@@ -281,6 +355,7 @@
 
 @push('scripts')
 <script src="{{ asset('js/student-list.js') }}?v={{ md5_file(public_path('js/student-list.js')) }}" defer></script>
+<script src="{{ asset('js/student-photo-bulk.js') }}?v={{ md5_file(public_path('js/student-photo-bulk.js')) }}" defer></script>
 <script>
 const studentQrDialog = document.querySelector('[data-student-qr-dialog]');
 const studentQrDialogContent = studentQrDialog?.querySelector('[data-student-qr-content]');

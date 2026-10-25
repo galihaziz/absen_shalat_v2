@@ -13,6 +13,13 @@
     <div><span>Haid</span><strong>{{ $todayTotals['haid'] }}</strong></div>
     <div><span>Sudah scan</span><strong>{{ $todayScannedCount }}</strong></div>
 </section>
+@if($haidOverLimitCount > 0)
+    <section class="panel" role="alert">
+        <strong>Peringatan: {{ $haidOverLimitCount }} siswi tercatat haid lebih dari 15 hari kalender.</strong>
+        <p>Perhitungan tetap memasukkan Sabtu dan Minggu. Silakan tindak lanjuti melalui halaman daftar haid.</p>
+        <a class="button" href="{{ route('reports.haid-over-limit') }}">Lihat daftar haid &gt; 15 hari</a>
+    </section>
+@endif
 <details class="panel attendance-progress-panel">
     <summary class="attendance-progress-summary"><span><strong>Progress absensi per kelas</strong><small>{{ $todayStudentCount - $todayUnmarkedCount }} dari {{ $todayStudentCount }} siswa tercatat hari ini · Rincian rombel</small></span><span class="button quiet attendance-progress-toggle"><span class="when-closed">Tampilkan</span><span class="when-open">Sembunyikan</span></span>@if($lastScanAt)<span class="last-scan-indicator">Scan terakhir {{ \Illuminate\Support\Carbon::parse($lastScanAt)->format('H:i') }}</span>@endif</summary>
     @if($classProgress->isEmpty())

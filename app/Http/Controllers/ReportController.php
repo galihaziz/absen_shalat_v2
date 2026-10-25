@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\AppSetting;
+use App\Services\HaidDurationMonitor;
 use DateTimeImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -131,6 +132,13 @@ class ReportController extends Controller
         $monthNames = $this->monthNames();
 
         return view('reports.alpha', compact('start', 'end', 'month', 'year', 'period', 'weekDate', 'className', 'search', 'rows', 'totalAlpha', 'classes', 'monthNames'));
+    }
+
+    public function haidOverLimit(HaidDurationMonitor $monitor): View
+    {
+        $students = $monitor->activeOverLimit();
+
+        return view('reports.haid-over-limit', compact('students'));
     }
 
     private function monthNames(): array

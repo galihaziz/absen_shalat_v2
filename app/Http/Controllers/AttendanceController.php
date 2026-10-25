@@ -7,6 +7,7 @@ use AbsenShalat\Models\AppSetting;
 use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\Student;
 use App\Services\AttendanceRecorder;
+use App\Services\HaidDurationMonitor;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -184,6 +185,9 @@ class AttendanceController extends Controller
             ->sortBy(fn (string $grade): int => ['X' => 10, 'XI' => 11, 'XII' => 12][$grade])
             ->values();
         $progressMajors = $classProgress->pluck('jurusan')->unique()->sort()->values();
+        $haidOverLimitCount = in_array(Auth::user()->getAttribute('role'), ['admin', 'kesiswaan'], true)
+            ? app(HaidDurationMonitor::class)->activeOverLimit()->count()
+            : 0;
         $students = collect();
         $attendance = [];
         $attendanceTimes = [];
@@ -249,7 +253,7 @@ class AttendanceController extends Controller
             'month', 'year', 'selectedClass', 'search', 'start', 'end', 'dates', 'weeks',
             'selectedTableWeek', 'visibleDates', 'classes', 'students', 'attendance', 'attendanceTimes', 'attendanceTotals', 'monthNames',
             'today', 'todayStudentCount', 'todayTotals', 'todayUnmarkedCount', 'todayScannedCount', 'lastScanAt',
-            'classProgress', 'progressGrades', 'progressMajors'
+            'classProgress', 'progressGrades', 'progressMajors', 'haidOverLimitCount'
         ));
     }
 

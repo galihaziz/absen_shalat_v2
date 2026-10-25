@@ -203,6 +203,52 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertDatabaseHas('absensi', ['id_siswa' => $femaleStudent->id, 'tanggal' => $date, 'status' => 'M']);
     }
 
+    public function test_haid_over_limit_counts_calendar_days_including_weekends(): void
+    {
+        Carbon::setTestNow('2026-10-26 10:00:00');
+        try {
+            $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+            $student = Student::query()->create([
+                'induk' => '900130', 'nama' => 'Siswi Haid Panjang', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+            ]);
+
+            for ($date = new \DateTimeImmutable('2026-10-12'); $date <= new \DateTimeImmutable('2026-10-26'); $date = $date->modify('+1 day')) {
+                if ((int) $date->format('N') <= 5) {
+                    Attendance::query()->create([
+                        'id_siswa' => $student->id, 'tanggal' => $date->format('Y-m-d'), 'status' => 'M',
+                    ]);
+                }
+            }
+
+            $this->actingAs($this->makeUser('kesiswaan'))
+                ->get('/laporan/haid-lebih-15-hari')
+                ->assertOk()
+                ->assertSee('Tidak ada siswi dengan catatan haid lebih dari 15 hari kalender.')
+                ->assertDontSee('Siswi Haid Panjang');
+
+            Carbon::setTestNow('2026-10-27 10:00:00');
+            Attendance::query()->create([
+                'id_siswa' => $student->id, 'tanggal' => '2026-10-27', 'status' => 'M',
+            ]);
+
+            $this->get('/laporan/haid-lebih-15-hari')
+                ->assertOk()
+                ->assertSee('Siswi Haid Panjang')
+                ->assertSee('12/10/2026')
+                ->assertSee('27/10/2026')
+                ->assertSee('16 hari');
+            $this->get('/staff')
+                ->assertOk()
+                ->assertSee('1 siswi tercatat haid lebih dari 15 hari kalender.')
+                ->assertSee('Lihat daftar haid > 15 hari');
+            $this->actingAs($this->makeUser('absensi'))
+                ->get('/laporan/haid-lebih-15-hari')
+                ->assertForbidden();
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_qr_scan_page_shows_today_without_manual_induk_input(): void
     {
         $this->actingAs($this->makeUser('absensi'))

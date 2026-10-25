@@ -60,6 +60,7 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('role:admin,kesiswaan')->group(function () {
         Route::get('/laporan', [ReportController::class, 'index'])->middleware('throttle:30,1')->name('reports.index');
+        Route::get('/laporan/haid-lebih-15-hari', [ReportController::class, 'haidOverLimit'])->name('reports.haid-over-limit');
         Route::post('/laporan/batas-scan', [ReportController::class, 'updateScanCutoff'])->name('reports.scan-cutoff.update');
         Route::get('/alpha', [ReportController::class, 'alpha'])->middleware('throttle:30,1')->name('reports.alpha');
         Route::get('/export_excel', [ExportController::class, 'excel'])->middleware('throttle:5,1')->name('reports.export');

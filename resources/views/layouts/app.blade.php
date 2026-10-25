@@ -7,6 +7,13 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex, nofollow">
     <title>@yield('title', 'Rekap Absensi Solat')</title>
+    @if(request()->is('staff', 'staff/*', 'login'))
+    <meta name="theme-color" content="#126b55">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/pwa-192.png') }}">
+    @endif
     @php($irmaLogoUrl = asset('images/irma-logo.png').'?v='.md5_file(public_path('images/irma-logo.png')))
     <link rel="icon" type="image/png" href="{{ $irmaLogoUrl }}">
     <script>
@@ -26,6 +33,16 @@
     <script src="{{ asset('js/liquid-effects.js') }}?v={{ md5_file(public_path('js/liquid-effects.js')) }}" defer></script>
     <script src="{{ asset('js/progressive-table.js') }}?v={{ md5_file(public_path('js/progressive-table.js')) }}" defer></script>
     <script src="{{ asset('js/form-enhancements.js') }}?v={{ md5_file(public_path('js/form-enhancements.js')) }}" defer></script>
+    @if(request()->is('staff', 'staff/*', 'login'))
+        <script>
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('{{ asset('service-worker.js') }}')
+                        .catch((error) => console.error('PWA service worker registration failed:', error));
+                });
+            }
+        </script>
+    @endif
 </head>
 <body>
 @php($studentDomain = strtolower((string) config('app.student_domain')))

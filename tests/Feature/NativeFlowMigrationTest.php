@@ -89,7 +89,11 @@ class NativeFlowMigrationTest extends TestCase
 
     public function test_staff_login_path_is_canonical_and_legacy_login_remains_available(): void
     {
-        $this->get('/staff/login')->assertOk()->assertSee(route('login.store'), false);
+        $this->get('/staff/login')
+            ->assertOk()
+            ->assertSee(route('login.store'), false)
+            ->assertSee('rel="manifest"', false)
+            ->assertSee('navigator.serviceWorker.register', false);
         $this->get('/login')->assertOk();
     }
 

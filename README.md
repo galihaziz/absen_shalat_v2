@@ -14,6 +14,8 @@ Untuk aplikasi di balik reverse proxy, biarkan `TRUSTED_PROXIES` kosong kecuali 
 
 Alamat utama aplikasi (`/`) selalu membuka login siswa dengan nomor induk, termasuk saat diakses melalui domain ngrok. Halaman staff tetap tersedia melalui `/staff/login`. Setelah login, siswa hanya dapat melihat kartu miliknya sendiri, mencetak kartu, atau mengunduh PDF melalui portal siswa.
 
+Halaman staf dapat dipasang sebagai PWA dari browser yang mendukung instalasi aplikasi. Setelah membuka `/staff/login`, pilih **Install app** atau **Tambahkan ke layar utama**; aplikasi yang terpasang akan dibuka dari `/staff` dan meminta login jika sesi staf belum aktif. PWA membutuhkan HTTPS pada hosting (localhost tetap didukung saat pengembangan). Saat offline, halaman absensi dan data staf tidak disimpan di cache; aplikasi hanya menampilkan pemberitahuan bahwa koneksi diperlukan.
+
 Portal siswa memakai nomor induk dan PIN. Migrasi memberi PIN awal `siswa123` kepada siswa yang sudah ada; siswa baru/import dan reset staf juga memakai PIN awal tersebut. Siswa dapat mengganti PIN dari halaman **Ubah PIN**, dan staf admin/kesiswaan dapat meresetnya dari **Data Siswa**. Karena PIN awal sama untuk semua siswa, ini bukan rahasia unik: pastikan siswa menggantinya dan distribusikan nomor induk/PIN dengan hati-hati. Untuk perlindungan kuat, ganti kebijakan ini dengan PIN unik per siswa yang diberikan melalui saluran terverifikasi.
 
 Seeder membuat atau memperbarui satu akun untuk masing-masing role (`admin`, `kesiswaan`, dan `absensi`) dari konfigurasi `.env`. Password disimpan dalam bentuk hash. Username setiap akun harus berbeda. Seeder dapat dijalankan ulang untuk menyelaraskan akun awal dengan konfigurasi `.env`.

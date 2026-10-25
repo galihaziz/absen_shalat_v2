@@ -1,0 +1,25 @@
+{
+    "id": "/staff",
+    "name": "Rekap Absensi Solat - Staf",
+    "short_name": "Absensi Staf",
+    "description": "Aplikasi staf untuk pencatatan dan pengelolaan absensi solat.",
+    "start_url": "/staff",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#eef3f0",
+    "theme_color": "#126b55",
+    "icons": [
+        {
+            "src": "/images/pwa-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/images/pwa-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}

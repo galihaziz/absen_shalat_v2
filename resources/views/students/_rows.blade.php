@@ -13,7 +13,7 @@
             <a class="button small" href="{{ route('reports.index', ['cari' => $student->nama]) }}">Riwayat</a>
             <a class="button small" href="{{ route('students.index', ['edit' => $student->id]) }}">Ubah</a>
             @unless($student->is_alumni)<form method="post" action="{{ route('students.pin.reset', $student) }}" onsubmit="return confirm('Reset PIN {{ $student->nama }} ke PIN awal siswa?')">@csrf<button class="button quiet small" type="submit">Reset PIN</button></form>@endunless
-            <form method="post" action="{{ route('students.destroy', $student) }}" onsubmit="return confirm('Hapus siswa ini dan seluruh absensinya?')">@csrf @method('DELETE')<button class="button danger small" type="submit">Hapus</button></form>
+            <form method="post" action="{{ route('students.destroy', $student) }}" onsubmit="return confirm('Hapus siswa ini, seluruh absensinya, dan foto siswa?')">@csrf @method('DELETE')<button class="button danger small" type="submit">Hapus</button></form>
         </div></td>
     </tr>
 @empty

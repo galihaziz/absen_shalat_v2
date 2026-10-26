@@ -439,6 +439,34 @@ class NativeFlowMigrationTest extends TestCase
         }
     }
 
+    public function test_deleting_one_student_also_removes_uppercase_extension_photo(): void
+    {
+        Storage::fake('local');
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+        $student = Student::query()->create([
+            'induk' => '8500001',
+            'nama' => 'Hapus Satu Uji',
+            'jenis_kelamin' => 'L',
+            'id_kelas' => $classroom->id,
+        ]);
+        Attendance::query()->create([
+            'id_siswa' => $student->id,
+            'tanggal' => '2026-10-07',
+            'status' => 'H',
+        ]);
+        $photoPath = 'foto-siswa/850/8500001.JPG';
+        Storage::disk('local')->put($photoPath, 'foto-uji');
+
+        $this->actingAs($this->makeUser('admin'))
+            ->delete(route('students.destroy', $student))
+            ->assertRedirect('/data_siswa')
+            ->assertSessionHas('status', 'Siswa dan absensinya berhasil dihapus.');
+
+        $this->assertDatabaseMissing('siswa', ['id' => $student->id]);
+        $this->assertDatabaseMissing('absensi', ['id_siswa' => $student->id]);
+        Storage::disk('local')->assertMissing($photoPath);
+    }
+
     public function test_mass_student_delete_by_class_grade_and_major_removes_attendance_and_photos(): void
     {
         Storage::fake('local');

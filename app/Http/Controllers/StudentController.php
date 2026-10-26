@@ -858,18 +858,7 @@ class StudentController extends Controller
 
     private function studentPhotoPath(string $induk): ?string
     {
-        $disk = Storage::disk('local');
-
-        foreach (['jpg', 'jpeg', 'png', 'webp'] as $extension) {
-            foreach ([$this->studentPhotoDirectory($induk), 'foto-siswa'] as $directory) {
-                $path = $directory.'/'.$induk.'.'.$extension;
-                if ($disk->exists($path)) {
-                    return $path;
-                }
-            }
-        }
-
-        return null;
+        return $this->studentPhotoPaths($induk)[0] ?? null;
     }
 
     private function saveStudentPhoto(UploadedFile $photo, string $induk): bool
@@ -932,14 +921,19 @@ class StudentController extends Controller
         $disk = Storage::disk('local');
         $paths = [];
 
-        foreach (['jpg', 'jpeg', 'png', 'webp'] as $extension) {
-            foreach ([$this->studentPhotoDirectory($induk), 'foto-siswa'] as $directory) {
-                $path = $directory.'/'.$induk.'.'.$extension;
-                if ($disk->exists($path)) {
+        foreach (array_unique([$this->studentPhotoDirectory($induk), 'foto-siswa']) as $directory) {
+            if (! $disk->directoryExists($directory)) {
+                continue;
+            }
+
+            foreach ($disk->files($directory) as $path) {
+                if (preg_match('/^'.preg_quote($induk, '/').'\.(?:jpe?g|png|webp)$/i', basename($path)) === 1) {
                     $paths[] = $path;
                 }
             }
         }
+
+        sort($paths);
 
         return $paths;
     }

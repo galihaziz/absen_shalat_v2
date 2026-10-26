@@ -37,6 +37,62 @@ Untuk mempertahankan database native yang sudah terisi, jalankan migrasi di data
 
 Catatan kompatibilitas: default koneksi memakai `utf8mb4_unicode_ci` agar dapat dipakai pada versi MySQL/MariaDB yang umum tersedia di hosting; `DB_COLLATION` dapat diatur eksplisit bila server membutuhkan collation lain. `TRUSTED_PROXIES` dibiarkan kosong secara default. Isi hanya alamat IP/CIDR proxy yang benar-benar berada di depan PHP; jangan gunakan `*`.
 
+### Deploy atau update memakai file ZIP
+
+Gunakan cara ini bila source aplikasi diunggah melalui **aaPanel > Files** dan bukan diambil dengan Git.
+
+#### Membuat ZIP untuk upload
+
+1. Di komputer pengembangan, dari root project jalankan `npm ci`, `npm run build`, dan `npm run build:qr-scanner` agar ZIP sudah berisi aset produksi.
+2. Buat ZIP dari **isi folder project** (agar `artisan`, `composer.json`, dan folder `public/` berada langsung di root saat diekstrak). Sertakan `composer.json`, `composer.lock`, `package.json`, `package-lock.json`, `artisan`, `app/`, `bootstrap/`, `config/`, `database/migrations/`, `database/seeders/`, `public/` termasuk `public/build/` dan `public/js/qr-scanner.js`, `resources/`, `routes/`, serta file aplikasi lain yang diperlukan.
+3. Jangan masukkan `.env`, `vendor/`, `node_modules/`, `.git/`, `storage/` dari komputer lokal, file database lokal `database/database.sqlite`, cache/log, atau file sementara ke ZIP. Jangan pernah menyertakan data siswa produksi atau kredensial.
+
+#### Instalasi pertama dari ZIP
+
+1. Di aaPanel, buat website/domain dan database MySQL/MariaDB. Ekstrak ZIP ke folder project, misalnya `/www/wwwroot/absen_shalat/`. **Jangan** ekstrak isi aplikasi langsung ke document root publik.
+2. Atur document root website ke `/www/wwwroot/absen_shalat/public`. Untuk Nginx, pasang aturan Laravel `try_files $uri $uri/ /index.php?$query_string;` pada konfigurasi rewrite website. Dengan document root dan rewrite ini, URL seperti `/staff/login` diteruskan ke Laravel dan tidak berhenti sebagai 404 Nginx.
+3. Di terminal aaPanel, masuk ke folder project dan pasang dependensi PHP menggunakan versi PHP CLI yang sama dengan website. Contoh:
+
+   ```sh
+   cd /www/wwwroot/absen_shalat
+   export PATH=/www/server/php/82/bin:$PATH
+   composer install --no-dev --prefer-dist --optimize-autoloader
+   ```
+
+   Jika aaPanel menyediakan perintah Composer sendiri, gunakan Composer tersebut bersama PHP 8.2+ yang sesuai.
+4. Salin `.env.example` menjadi `.env` **di server**, isi konfigurasi produksi (terutama `APP_ENV=production`, `APP_DEBUG=false`, HTTPS `APP_URL`, database, SMTP, dan password akun awal), lalu buat key satu kali:
+
+   ```sh
+   /www/server/php/82/bin/php artisan key:generate
+   ```
+
+   Jangan jalankan `key:generate` lagi pada update. Lindungi `.env` dan jangan meletakkannya di dalam folder `public`.
+5. Pastikan user PHP-FPM dapat menulis ke `storage/` dan `bootstrap/cache/`; jangan menggunakan permission `777`. Jalankan migrasi instalasi pertama:
+
+   ```sh
+   /www/server/php/82/bin/php artisan migrate --seed --force
+   ```
+
+6. Jalankan `php artisan optimize`, pasang cron scheduler seperti pada bagian deploy di atas, lalu uji `/staff/login`, login siswa, upload, import, dan laporan.
+
+#### Memperbarui aplikasi memakai ZIP
+
+1. Buat ZIP versi baru dengan langkah build yang sama. Sebelum update, backup database melalui aaPanel dan salin `.env` serta `storage/` dari server ke lokasi backup aman. Pastikan backup tidak ikut dibagikan.
+2. Ekstrak ZIP baru ke **folder project yang sama**, pilih **replace/overwrite file yang sama** bila diminta. ZIP memang tidak memuat `.env`, `storage/`, `vendor/`, atau database lokal, jadi file konfigurasi dan data di server tidak ikut tertimpa. Jangan memilih opsi yang menghapus seluruh folder tujuan atau membersihkan file yang tidak ada di ZIP.
+3. Dari terminal project, perbarui dependensi dan migrasi tanpa menjalankan seeder:
+
+   ```sh
+   cd /www/wwwroot/absen_shalat
+   export PATH=/www/server/php/82/bin:$PATH
+   composer install --no-dev --prefer-dist --optimize-autoloader
+   /www/server/php/82/bin/php artisan optimize:clear
+   /www/server/php/82/bin/php artisan migrate --force
+   /www/server/php/82/bin/php artisan optimize
+   ```
+
+   Sesuaikan path PHP/Composer dengan versi yang aktif di aaPanel. Jangan jalankan `migrate:fresh`, jangan mengganti `.env` atau `APP_KEY`, dan jangan menjalankan seeder saat update kecuali memang ingin menyelaraskan akun awal dengan konfigurasi `.env`.
+4. Setelah update, coba buka `/staff/login`. Jika muncul 404 Nginx, periksa kembali document root yang harus berakhir dengan `/public` dan aturan `try_files` Laravel. Jika aplikasi menampilkan error Laravel, periksa `storage/logs/laravel.log` dan log PHP-FPM.
+
 ## Email pemulihan password admin
 
 Saat membuat atau mengubah akun melalui menu **Pengguna**, akun dengan role `admin` wajib memiliki email pemulihan. Role selain admin tetap menggunakan akun biasa dan tidak menyimpan email. Admin dapat memakai tautan **Lupa password admin?** di halaman login; tautan reset berlaku 60 menit dan hanya dikirim ke email admin yang terdaftar.

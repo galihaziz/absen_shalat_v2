@@ -6,6 +6,7 @@ use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\AppSetting;
 use App\Services\HaidDurationMonitor;
 use DateTimeImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,28 +15,38 @@ use Illuminate\View\View;
 
 class ReportController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|JsonResponse
     {
         [$start, $end, $month, $year, $period, $weekDate] = $this->period($request);
         $className = trim((string) $request->query('kelas', ''));
         $search = trim((string) $request->query('cari', ''));
         $workDays = $this->workDays($start, $end);
-        $students = $this->studentTotals($start, $end, $className, $search);
-        $totals = ['alpha' => 0, 'izin' => 0, 'sakit' => 0, 'hadir' => 0, 'haid' => 0];
-
-        foreach ($students as &$student) {
-            $student['hadir'] = (int) $student['hadir'];
-            $student['percentage'] = $workDays ? round($student['hadir'] / $workDays * 100, 1) : 0;
-            foreach ($totals as $key => $_value) {
-                $totals[$key] += $student[$key];
-            }
-        }
-        unset($student);
-
-        $totalRecords = count($students);
+        $totals = $this->periodAttendanceTotals($start, $end, $className, $search);
+        $totalRecords = $this->matchingStudentCount($className, $search);
         $overallPercentage = $totalRecords && $workDays
             ? round($totals['hadir'] / ($totalRecords * $workDays) * 100, 1)
             : 0;
+        $pageSize = 15;
+        $page = max(1, $request->integer('page', 1));
+        $startIndex = ($page - 1) * $pageSize;
+        $students = $this->studentTotals($start, $end, $className, $search, $startIndex, $pageSize);
+        foreach ($students as &$student) {
+            $student['percentage'] = $workDays ? round($student['hadir'] / $workDays * 100, 1) : 0;
+        }
+        unset($student);
+        $nextPageUrl = $startIndex + count($students) < $totalRecords
+            ? $request->fullUrlWithQuery(['page' => $page + 1])
+            : null;
+        if ($request->expectsJson()) {
+            return response()->json([
+                'html' => view('reports._student_rows', [
+                    'students' => $students,
+                    'startIndex' => $startIndex,
+                ])->render(),
+                'nextPageUrl' => $nextPageUrl,
+                'count' => count($students),
+            ]);
+        }
         $previousStart = $period === 'minggu'
             ? $start->modify('-7 days')
             : $start->modify('first day of last month');
@@ -78,7 +89,7 @@ class ReportController extends Controller
 
         return view('reports.index', compact(
             'start', 'end', 'month', 'year', 'period', 'weekDate', 'className', 'search', 'workDays',
-            'students', 'totals', 'totalRecords', 'overallPercentage', 'chartMax', 'classRanking', 'classes', 'monthNames', 'scanStartTime', 'scanEndTime',
+            'students', 'nextPageUrl', 'totals', 'totalRecords', 'overallPercentage', 'chartMax', 'classRanking', 'classes', 'monthNames', 'scanStartTime', 'scanEndTime',
             'previousStart', 'previousEnd', 'trendEnd', 'previousTotals', 'currentDailyAverage', 'previousDailyAverage', 'trendPercent'
         ));
     }
@@ -106,7 +117,7 @@ class ReportController extends Controller
         return redirect()->route('reports.index')->with('status', 'Rentang waktu scan berhasil disimpan.');
     }
 
-    public function alpha(Request $request): View
+    public function alpha(Request $request): View|JsonResponse
     {
         [$start, $end, $month, $year, $period, $weekDate] = $this->period($request);
         $className = trim((string) $request->query('kelas', ''));
@@ -117,28 +128,72 @@ class ReportController extends Controller
             ->where('a.status', 'A')
             ->whereBetween('a.tanggal', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->when($className !== '', fn ($query) => $query->where('k.nama', $className))
-            ->when($search !== '', fn ($query) => $query->where('s.nama', 'like', '%'.$search.'%'))
-            ->select('s.id', 's.induk', 's.nama', 's.jenis_kelamin', 's.is_irma', 's.is_nonis', 'k.nama as kelas', 'a.tanggal')
-            ->orderBy('k.nama')->orderBy('s.nama')->orderBy('a.tanggal')->get();
-        $rows = $absences->groupBy('id')->map(function ($studentAbsences): object {
-            $student = $studentAbsences->first();
-            $student->total_alpha = $studentAbsences->count();
-            $student->tanggal_alpha = $studentAbsences->map(fn ($absence) => (new DateTimeImmutable($absence->tanggal))->format('d/m'))->implode(', ');
-
-            return $student;
-        })->sortBy([['total_alpha', 'desc'], ['kelas', 'asc'], ['nama', 'asc']])->values();
-        $totalAlpha = $rows->sum('total_alpha');
+            ->when($search !== '', fn ($query) => $query->where('s.nama', 'like', '%'.$search.'%'));
+        $totalAlpha = (clone $absences)->count();
+        $totalRows = (clone $absences)->distinct()->count('s.id');
+        $pageSize = 15;
+        $page = max(1, $request->integer('page', 1));
+        $startIndex = ($page - 1) * $pageSize;
+        $rows = (clone $absences)
+            ->select('s.id', 's.induk', 's.nama', 's.jenis_kelamin', 's.is_irma', 's.is_nonis', 'k.nama as kelas')
+            ->selectRaw('COUNT(*) as total_alpha')
+            ->groupBy('s.id', 's.induk', 's.nama', 's.jenis_kelamin', 's.is_irma', 's.is_nonis', 'k.nama')
+            ->orderByDesc('total_alpha')->orderBy('k.nama')->orderBy('s.nama')->orderBy('s.id')
+            ->offset($startIndex)->limit($pageSize)->get();
+        $datesByStudent = (clone $absences)
+            ->whereIn('s.id', $rows->pluck('id'))
+            ->orderBy('a.tanggal')
+            ->get(['s.id', 'a.tanggal'])
+            ->groupBy('id');
+        foreach ($rows as $row) {
+            $row->tanggal_alpha = $datesByStudent
+                ->get($row->id, collect())
+                ->map(fn ($absence) => (new DateTimeImmutable($absence->tanggal))->format('d/m'))
+                ->implode(', ');
+        }
+        $nextPageUrl = $startIndex + $rows->count() < $totalRows
+            ? $request->fullUrlWithQuery(['page' => $page + 1])
+            : null;
+        if ($request->expectsJson()) {
+            return response()->json([
+                'html' => view('reports._alpha_rows', [
+                    'rows' => $rows,
+                    'startIndex' => $startIndex,
+                ])->render(),
+                'nextPageUrl' => $nextPageUrl,
+                'count' => $rows->count(),
+            ]);
+        }
         $classes = Classroom::query()->orderBy('nama')->pluck('nama');
         $monthNames = $this->monthNames();
 
-        return view('reports.alpha', compact('start', 'end', 'month', 'year', 'period', 'weekDate', 'className', 'search', 'rows', 'totalAlpha', 'classes', 'monthNames'));
+        return view('reports.alpha', compact('start', 'end', 'month', 'year', 'period', 'weekDate', 'className', 'search', 'rows', 'totalRows', 'totalAlpha', 'classes', 'monthNames', 'nextPageUrl'));
     }
 
-    public function haidOverLimit(HaidDurationMonitor $monitor): View
+    public function haidOverLimit(Request $request, HaidDurationMonitor $monitor): View|JsonResponse
     {
-        $students = $monitor->activeOverLimit();
+        $allStudents = $monitor->activeOverLimit();
+        $totalStudents = $allStudents->count();
+        $pageSize = 15;
+        $page = max(1, $request->integer('page', 1));
+        $startIndex = ($page - 1) * $pageSize;
+        $students = $allStudents->slice($startIndex, $pageSize)->values();
+        $nextPageUrl = $startIndex + $students->count() < $totalStudents
+            ? $request->fullUrlWithQuery(['page' => $page + 1])
+            : null;
 
-        return view('reports.haid-over-limit', compact('students'));
+        if ($request->expectsJson()) {
+            return response()->json([
+                'html' => view('reports._haid_rows', [
+                    'students' => $students,
+                    'startIndex' => $startIndex,
+                ])->render(),
+                'nextPageUrl' => $nextPageUrl,
+                'count' => $students->count(),
+            ]);
+        }
+
+        return view('reports.haid-over-limit', compact('students', 'totalStudents', 'nextPageUrl'));
     }
 
     private function monthNames(): array
@@ -187,13 +242,38 @@ class ReportController extends Controller
             ->when($className !== '', fn ($query) => $query->where('k.nama', $className))
             ->when($search !== '', fn ($query) => $query->where('s.nama', 'like', '%'.$search.'%'))
             ->selectRaw('COALESCE(SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END), 0) as hadir', ['H'])
-            ->selectRaw('COUNT(*) as tercatat')
+            ->selectRaw('COALESCE(SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END), 0) as alpha', ['A'])
+            ->selectRaw('COALESCE(SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END), 0) as izin', ['I'])
+            ->selectRaw('COALESCE(SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END), 0) as sakit', ['S'])
+            ->selectRaw('COALESCE(SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END), 0) as haid', ['M'])
             ->first();
 
-        return ['hadir' => (int) $totals->hadir, 'tercatat' => (int) $totals->tercatat];
+        return [
+            'alpha' => (int) $totals->alpha,
+            'izin' => (int) $totals->izin,
+            'sakit' => (int) $totals->sakit,
+            'hadir' => (int) $totals->hadir,
+            'haid' => (int) $totals->haid,
+        ];
     }
 
-    private function studentTotals(DateTimeImmutable $start, DateTimeImmutable $end, string $className, string $search): array
+    private function matchingStudentCount(string $className, string $search): int
+    {
+        return DB::table('siswa as s')
+            ->join('kelas as k', 'k.id', '=', 's.id_kelas')
+            ->when($className !== '', fn ($query) => $query->where('k.nama', $className))
+            ->when($search !== '', fn ($query) => $query->where('s.nama', 'like', '%'.$search.'%'))
+            ->count('s.id');
+    }
+
+    private function studentTotals(
+        DateTimeImmutable $start,
+        DateTimeImmutable $end,
+        string $className,
+        string $search,
+        int $offset,
+        int $limit
+    ): array
     {
         return DB::table('siswa as s')
             ->join('kelas as k', 'k.id', '=', 's.id_kelas')
@@ -210,7 +290,8 @@ class ReportController extends Controller
             ->selectRaw('COALESCE(SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END), 0) as haid', ['M'])
             ->selectRaw('MAX(CASE WHEN a.status = ? THEN a.waktu_scan END) as scan_hadir_terakhir', ['H'])
             ->groupBy('s.id', 's.induk', 's.nama', 's.jenis_kelamin', 's.is_irma', 's.is_nonis', 'k.nama')
-            ->orderByDesc('alpha')->orderBy('k.nama')->orderBy('s.nama')->get()
+            ->orderByDesc('alpha')->orderBy('k.nama')->orderBy('s.nama')->orderBy('s.id')
+            ->offset($offset)->limit($limit)->get()
             ->map(fn ($row) => [
                 'induk' => $row->induk,
                 'nama' => $row->nama,

@@ -24,6 +24,10 @@ Laravel memakai koneksi MySQL seperti aplikasi native: host `127.0.0.1`, databas
 
 Untuk mempertahankan database native yang sudah terisi, jalankan migrasi di database yang sama. Tabel native yang sudah ada akan dipakai; migrasi tambahan juga mengonversi tabel users bawaan Laravel yang mungkin sudah tercatat tanpa menghapus akun lamanya.
 
+Setelah memperbarui aplikasi, jalankan `php artisan migrate` agar kolom nilai pengaturan dapat menyimpan katalog jurusan yang lebih besar. Kelas yang hanya berisi tingkat seperti `XI` atau `XII` tidak dianggap sebagai jurusan; pastikan label kelas pada workbook menyertakan rombelnya, misalnya `XI TL 1`.
+
+Tabel Data Siswa, pilihan kartu manual, absensi, dan laporan memuat siswa bertahap sebanyak 15 baris saat tabel discroll; tombol pemuatan tetap tersedia sebagai alternatif jika scroll otomatis tidak didukung.
+
 ## Deploy Linux dengan aaPanel
 
 1. Tambahkan website/domain di aaPanel dan aktifkan HTTPS. Atur document root ke folder `public` di dalam project (misalnya `/www/wwwroot/absen_shalat/public`), bukan ke root project. Pastikan file rewrite Laravel aktif: `public/.htaccess` untuk Apache, atau aturan `try_files $uri $uri/ /index.php?$query_string;` pada konfigurasi rewrite Nginx aaPanel. Pertahankan konfigurasi PHP-FPM yang dibuat panel.

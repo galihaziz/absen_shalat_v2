@@ -67,7 +67,7 @@ class StudentController extends Controller
             ->orderBy('student_classrooms.nama')
             ->orderBy('siswa.nama')
             ->orderBy('siswa.id')
-            ->simplePaginate(50)
+            ->simplePaginate(15)
             ->withQueryString();
 
         if ($request->expectsJson()) {
@@ -98,6 +98,7 @@ class StudentController extends Controller
             ->sortBy(fn (string $grade): int => ['X' => 10, 'XI' => 11, 'XII' => 12][$grade])
             ->values();
         $majors = $classes->map(fn (Classroom $class): string => $class->majorLabel())
+            ->filter(fn (string $major): bool => $major !== '')
             ->unique()->sort()->values();
         $deleteClasses = Classroom::query()->withCount('students')->orderBy('nama')->get();
         $alumniCount = Student::query()->where('is_alumni', true)->count();
@@ -114,6 +115,7 @@ class StudentController extends Controller
                 ->sortBy(fn (array $option): int => ['X' => 10, 'XI' => 11, 'XII' => 12][$option['value']])
                 ->values(),
             'major' => $deleteClasses
+                ->filter(fn (Classroom $class): bool => $class->majorLabel() !== '')
                 ->groupBy(fn (Classroom $class): string => $class->majorLabel())
                 ->map(fn ($group, string $major): array => ['value' => $major, 'label' => $major, 'count' => (int) $group->sum('students_count')])
                 ->filter(fn (array $option): bool => $option['count'] > 0)
@@ -194,7 +196,7 @@ class StudentController extends Controller
             ->orderBy('student_classrooms.nama')
             ->orderBy('siswa.nama')
             ->orderBy('siswa.id')
-            ->simplePaginate(50)
+            ->simplePaginate(15)
             ->withQueryString();
 
         if ($request->expectsJson()) {

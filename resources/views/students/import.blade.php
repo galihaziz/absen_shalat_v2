@@ -10,7 +10,7 @@
         data-import-upload-form
         data-progress-url="{{ route('students.import.progress', ['progressToken' => '__PROGRESS_TOKEN__']) }}">
         @csrf
-        <input type="hidden" name="progress_token" value="{{ $progressToken }}">
+        <input type="hidden" name="progress_token" value="{{ $progressToken ?? '' }}">
         <label>File workbook<input type="file" name="excel" accept=".xlsx,.xls,.ods" required></label>
         @error('excel')<p class="warning-text">{{ $message }}</p>@enderror
         @error('preview_token')<p class="warning-text">{{ $message }}</p>@enderror
@@ -85,6 +85,7 @@
             <form method="post" action="{{ route('students.import.confirm') }}" id="studentImportConfirmForm">
                 @csrf
                 <input type="hidden" name="preview_token" value="{{ $previewToken }}">
+                <input type="hidden" name="selected_rows_json" value="[]" data-import-selected-json>
                 <div class="import-selection-toolbar">
                     <label class="check-label"><input type="checkbox" data-import-select-valid-all> Pilih semua siswa valid ({{ number_format($validCount) }})</label>
                     <label class="check-label"><input type="checkbox" data-import-select-page> Pilih semua baris valid di halaman ini</label>
@@ -336,15 +337,8 @@
             }
             if (selectedIds.size === 0) return;
 
-            syncForm.querySelectorAll('[data-import-selected-hidden]').forEach((input) => input.remove());
-            selectedIds.forEach((id) => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'selected_rows[]';
-                input.value = id;
-                input.dataset.importSelectedHidden = '';
-                syncForm.append(input);
-            });
+            const selectedRowsInput = syncForm.querySelector('[data-import-selected-json]');
+            if (selectedRowsInput) selectedRowsInput.value = JSON.stringify([...selectedIds]);
         });
         applyFilters();
     });

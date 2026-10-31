@@ -205,7 +205,7 @@ class MajorCatalog
                 continue;
             }
             $major = mb_strtoupper(trim($major));
-            if ($major !== '') {
+            if ($major !== '' && ! $this->isGradeOnly($major)) {
                 $normalized[$major] = true;
             }
         }
@@ -259,11 +259,19 @@ class MajorCatalog
     private function rawMajorForClassroom(string $classroomName): string
     {
         $name = mb_strtoupper(trim($classroomName));
+        if ($this->isGradeOnly($name)) {
+            return '';
+        }
         if (preg_match('/^(?:KELAS\s+)?(?:XII|XI|X)\s+(.+)$/u', $name, $match) === 1) {
             $name = $match[1];
         }
         $name = preg_replace('/\s+\d+[A-Z]?$/u', '', $name) ?? $name;
 
         return trim($name);
+    }
+
+    private function isGradeOnly(string $value): bool
+    {
+        return preg_match('/^(?:KELAS\s+)?(?:XII|XI|X|12|11|10)$/u', trim($value)) === 1;
     }
 }

@@ -64,9 +64,9 @@
     @endforeach
 </div></section>
 <section class="panel report-table-panel"><div class="section-heading"><div><h2>Rekap siswa</h2><p>{{ $start->format('d/m/Y') }} – {{ $end->format('d/m/Y') }}</p></div></div>
-    <div class="table-wrap"><table><thead><tr><th class="table-row-number">No.</th><th>Induk</th><th class="sticky-name">Nama</th><th>Kelas</th><th>Alpha</th><th>Izin</th><th>Sakit</th><th>Hadir</th><th>Haid</th><th>Scan hadir terakhir</th><th>Kehadiran</th></tr></thead><tbody>
-    @forelse($students as $index => $student)<tr @class(['irma-row' => $student['is_irma'], 'nonis-row' => $student['is_nonis']])><td class="table-row-number">{{ $index + 1 }}</td><td>{{ $student['induk'] }}</td><td class="sticky-name">{{ $student['nama'] }}</td><td>{{ $student['kelas'] }}</td><td>{{ $student['alpha'] }}</td><td>{{ $student['izin'] }}</td><td>{{ $student['sakit'] }}</td><td>{{ $student['hadir'] }}</td><td>{{ $student['haid'] }}</td><td>{{ $student['scan_hadir_terakhir'] ?? '-' }}</td><td>{{ $student['percentage'] }}%</td></tr>@empty<tr><td colspan="11" class="empty">Tidak ada data yang cocok. <a href="{{ route('reports.index') }}">Hapus filter laporan</a></td></tr>@endforelse
-    </tbody></table></div>
+    <div class="table-wrap" data-progressive-table data-next-page="{{ $nextPageUrl }}"><table><thead><tr><th class="table-row-number">No.</th><th>Induk</th><th class="sticky-name">Nama</th><th>Kelas</th><th>Alpha</th><th>Izin</th><th>Sakit</th><th>Hadir</th><th>Haid</th><th>Scan hadir terakhir</th><th>Kehadiran</th></tr></thead><tbody data-progressive-rows>
+    @include('reports._student_rows', ['students' => $students, 'startIndex' => 0])
+    </tbody></table><div class="student-load-trigger" data-progressive-trigger @if(! $nextPageUrl) hidden @endif><span class="loading-feedback" data-progressive-status role="status" aria-live="polite"></span><button class="button quiet small" type="button" data-progressive-button>Muat siswa berikutnya</button></div></div>
 </section>
 <section class="panel ranking-panel"><div class="ranking-heading"><div><h2>Alpha terbanyak per rombel</h2><p>{{ $start->format('d/m/Y') }} – {{ $end->format('d/m/Y') }}</p></div></div>
     @if($classRanking->isEmpty())<p class="ranking-empty">Belum ada data rombel.</p>@else

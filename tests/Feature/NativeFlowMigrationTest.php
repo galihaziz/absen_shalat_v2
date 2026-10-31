@@ -7,6 +7,7 @@ use AbsenShalat\Models\AppSetting;
 use AbsenShalat\Models\Classroom;
 use AbsenShalat\Models\Student;
 use AbsenShalat\Models\User;
+use App\Services\HaidDurationMonitor;
 use App\Services\MajorCatalog;
 use App\Services\StudentCardPhotoProcessor;
 use App\Services\StudentQrCodeGenerator;
@@ -1232,13 +1233,21 @@ class NativeFlowMigrationTest extends TestCase
     {
         Storage::fake('local');
         $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
-        Student::query()->create([
-            'induk' => '7300001', 'nama' => 'Pilihan Manual', 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
-        ]);
+        foreach (range(1, 16) as $number) {
+            Student::query()->create([
+                'induk' => (string) (7300000 + $number),
+                'nama' => $number === 1 ? 'Pilihan Manual' : 'Pilihan Manual '.$number,
+                'jenis_kelamin' => 'L',
+                'id_kelas' => $classroom->id,
+            ]);
+        }
         $this->actingAs($this->makeUser('admin'));
 
         $this->get('/data_siswa')->assertOk()->assertDontSee('student-qr-select');
         $this->get('/data_siswa/kartu/manual')->assertOk()->assertSee('student-qr-select');
+        $this->getJson('/data_siswa/kartu/manual?page=1')->assertOk()->assertJsonPath('count', 15);
+        $this->getJson('/data_siswa/kartu/manual?page=2')
+            ->assertOk()->assertJsonPath('count', 1)->assertJsonPath('nextPageUrl', null);
         $this->post('/data_siswa/qr/cetak-massal', ['scope' => 'major', 'major' => 'Tidak Ada'])
             ->assertSessionHasErrors('scope');
 
@@ -1516,6 +1525,91 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertDatabaseHas('siswa', ['induk' => '001234', 'nama' => 'Siswa Nol Depan']);
     }
 
+    public function test_student_import_keeps_full_class_name_when_workbook_only_has_grade_in_class_column(): void
+    {
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('X IPA 2');
+        $sheet->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin', 'Kelas'],
+            ['902001', 'Siswa Kelas Lengkap', 'P', '10'],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'student-import-class-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 1);
+
+        $this->assertSame('X IPA 2', $preview->viewData('previewRows')[0]['kelas']);
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows' => [0],
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+        $this->assertDatabaseHas('kelas', ['nama' => 'X IPA 2']);
+        $this->assertDatabaseMissing('kelas', ['nama' => 'X']);
+    }
+
+    public function test_student_import_requires_a_full_class_name_when_only_grade_is_available(): void
+    {
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('Data Siswa');
+        $sheet->fromArray([
+            ['Nomor Induk', 'Nama', 'Jenis Kelamin', 'Kelas'],
+            ['902002', 'Siswa Tanpa Rombel', 'L', '10'],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'student-import-grade-only-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 0)->assertViewHas('invalidCount', 1);
+
+        $row = $preview->viewData('previewRows')[0];
+        $this->assertNull($row['record_id']);
+        $this->assertStringContainsString('kelas belum lengkap', implode(' ', $row['errors']));
+        $this->assertDatabaseMissing('siswa', ['induk' => '902002']);
+    }
+
+    public function test_student_import_uses_class_labels_above_attendance_tables(): void
+    {
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('Absensi');
+        $sheet->setCellValue('A1', 'KETERANGAN KELAS : X TL 1');
+        $sheet->fromArray(
+            [['No.', 'Nomor Induk', 'Nama Siswa', 'JK', 'Kelas']],
+            null,
+            'A2'
+        );
+        $sheet->fromArray([['1', '902101', 'Siswa Teknik Pertama', 'L', 'TL']], null, 'A3');
+        $sheet->setCellValue('A4', 'KELAS: XI TL 2');
+        $sheet->fromArray(
+            [['No.', 'Nomor Induk', 'Nama Siswa', 'JK', 'Kelas']],
+            null,
+            'A5'
+        );
+        $sheet->fromArray([['1', '902102', 'Siswa Teknik Kedua', 'P', 'TL']], null, 'A6');
+        $path = tempnam(sys_get_temp_dir(), 'student-import-attendance-layout-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('absensi.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 2);
+
+        $this->assertSame(
+            ['X TL 1', 'XI TL 2'],
+            array_column($preview->viewData('previewRows'), 'kelas')
+        );
+    }
+
     public function test_import_preview_saves_only_selected_rows_and_does_not_mark_others_as_alumni(): void
     {
         $classroom = Classroom::query()->create(['nama' => 'XI IPA 3']);
@@ -1652,6 +1746,32 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertDatabaseHas('siswa', ['id' => $missingStudent->id, 'is_alumni' => true]);
     }
 
+    public function test_student_import_confirms_more_than_one_thousand_selected_rows_as_one_input_field(): void
+    {
+        $workbook = new Spreadsheet;
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('X IPA 1');
+        $sheet->fromArray([['Nomor Induk', 'Nama', 'Jenis Kelamin']]);
+        for ($index = 1; $index <= 1001; $index++) {
+            $sheet->fromArray([[(string) (970000 + $index), 'Siswa Input '.$index, 'P']], null, 'A'.($index + 1));
+        }
+        $path = tempnam(sys_get_temp_dir(), 'student-import-input-limit-');
+        (new Xlsx($workbook))->save($path);
+        $content = file_get_contents($path);
+        unlink($path);
+
+        $preview = $this->actingAs($this->makeUser('admin'))->post('/import_siswa', [
+            'excel' => UploadedFile::fake()->createWithContent('siswa.xlsx', $content),
+        ])->assertOk()->assertViewHas('validCount', 1001);
+
+        $this->post(route('students.import.confirm'), [
+            'preview_token' => $preview->viewData('previewToken'),
+            'selected_rows_json' => json_encode(range(0, 1000), JSON_THROW_ON_ERROR),
+        ])->assertRedirect('/import_siswa')->assertSessionHas('status');
+
+        $this->assertSame(1001, Student::query()->where('nama', 'like', 'Siswa Input %')->count());
+    }
+
     public function test_admin_can_import_legacy_xls_workbooks(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'student-import-');
@@ -1754,6 +1874,47 @@ class NativeFlowMigrationTest extends TestCase
             ->assertSee('PPLG - RPL')
             ->assertSee('<option value="PPLG" selected>PPLG</option>', false)
             ->assertSee('<option value="RPL" selected>RPL</option>', false);
+    }
+
+    public function test_major_catalog_ignores_grade_only_class_names_and_saves_large_group_catalogs(): void
+    {
+        $catalog = app(MajorCatalog::class);
+        $classroomNames = ['XI', 'XII', 'XI TL 1'];
+
+        $this->assertSame('', $catalog->labelForClassroom('XI'));
+        $this->assertSame('', $catalog->labelForClassroom('XII'));
+        $this->assertContains('TL', $catalog->availableMajors($classroomNames));
+        $this->assertNotContains('XI', $catalog->availableMajors($classroomNames));
+        $this->assertNotContains('XII', $catalog->availableMajors($classroomNames));
+
+        $manyClassroomNames = [];
+        for ($index = 1; $index <= 30; $index++) {
+            $manyClassroomNames[] = sprintf('XI M%02d 1', $index);
+        }
+        $catalog->createGroup('Jurusan Tambahan', ['CUSTOM'], $manyClassroomNames);
+        $storedValue = (string) AppSetting::query()
+            ->where('key', MajorCatalog::SETTING_KEY)
+            ->value('value');
+        $this->assertGreaterThan(255, strlen($storedValue));
+
+        $catalog->deleteGroup(
+            (string) collect(json_decode($storedValue, true, 512, JSON_THROW_ON_ERROR))
+                ->firstWhere('name', 'Jurusan Tambahan')['id'],
+            $manyClassroomNames
+        );
+        $this->assertSame('', $catalog->labelForClassroom('XI'));
+
+        AppSetting::query()->updateOrCreate(
+            ['key' => MajorCatalog::SETTING_KEY],
+            ['value' => json_encode([
+                ['id' => 'grade-xi', 'name' => 'XI', 'majors' => ['XI']],
+                ['id' => 'grade-xii', 'name' => 'XII', 'majors' => ['XII']],
+            ], JSON_THROW_ON_ERROR)]
+        );
+        $catalogWithLegacyGradeGroups = new MajorCatalog;
+        $this->assertSame([], $catalogWithLegacyGradeGroups->groups());
+        $this->assertNotContains('XI', $catalogWithLegacyGradeGroups->availableMajors());
+        $this->assertNotContains('XII', $catalogWithLegacyGradeGroups->availableMajors());
     }
 
     public function test_alumni_are_not_eligible_for_attendance_scan(): void
@@ -1869,10 +2030,10 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertDatabaseHas('siswa', ['id' => $activeStudent->id, 'is_alumni' => false]);
     }
 
-    public function test_student_management_list_loads_only_fifty_active_students_per_request(): void
+    public function test_student_management_list_loads_fifteen_students_per_request(): void
     {
         $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
-        foreach (range(1, 51) as $number) {
+        foreach (range(1, 16) as $number) {
             Student::query()->create([
                 'induk' => (string) (12600000 + $number),
                 'nama' => 'Siswa '.$number,
@@ -1880,7 +2041,7 @@ class NativeFlowMigrationTest extends TestCase
                 'id_kelas' => $classroom->id,
             ]);
         }
-        foreach (range(1, 51) as $number) {
+        foreach (range(1, 16) as $number) {
             Student::query()->create([
                 'induk' => (string) (12700000 + $number),
                 'nama' => 'Alumni '.$number,
@@ -1892,9 +2053,10 @@ class NativeFlowMigrationTest extends TestCase
 
         $this->actingAs($this->makeUser('admin'));
         $page = $this->get('/data_siswa')->assertOk()->assertSee('data-student-load-trigger', false);
+        $this->getJson('/data_siswa?page=1')->assertOk()->assertJsonPath('count', 15);
         $this->assertStringNotContainsString('student-qr-select', $page->getContent());
         $this->assertStringContainsString('Riwayat', $page->getContent());
-        $this->get('/data_siswa?cari=Siswa')->assertOk()->assertSee('51 siswa cocok.');
+        $this->get('/data_siswa?cari=Siswa')->assertOk()->assertSee('16 siswa cocok.');
 
         $nextPage = $this->getJson('/data_siswa?page=2');
         $nextPage->assertOk()->assertJsonPath('count', 1)->assertJsonPath('nextPageUrl', null);
@@ -1903,7 +2065,7 @@ class NativeFlowMigrationTest extends TestCase
 
         $alumniPage = $this->get('/data_siswa?status=alumni')->assertOk()
             ->assertSee('Daftar siswa alumni')
-            ->assertSee('Siswa alumni (51)')
+            ->assertSee('Siswa alumni (16)')
             ->assertSee('Alumni 1')
             ->assertDontSee('Siswa 1</td>');
         $alumniRows = $this->getJson('/data_siswa?status=alumni')->assertOk()->json('html');
@@ -1916,10 +2078,10 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertStringNotContainsString('Siswa Alumni', $nextPage->json('html'));
     }
 
-    public function test_attendance_table_loads_students_in_scroll_batches(): void
+    public function test_attendance_table_loads_fifteen_students_in_scroll_batches(): void
     {
         $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
-        foreach (range(1, 51) as $number) {
+        foreach (range(1, 16) as $number) {
             Student::query()->create([
                 'induk' => (string) (12700000 + $number),
                 'nama' => 'Absensi '.$number,
@@ -1932,12 +2094,85 @@ class NativeFlowMigrationTest extends TestCase
         $page = $this->get('/staff?bulan=9&tahun=2026&kelas=X%20IPA%201&minggu_tabel=2026-09-28')
             ->assertOk()->assertSee('data-progressive-table', false);
         preg_match_all('/data-student="(\d+)"/', $page->getContent(), $matches);
-        $this->assertCount(50, array_unique($matches[1]));
+        $this->assertCount(15, array_unique($matches[1]));
 
         $nextPage = $this->getJson('/staff?bulan=9&tahun=2026&kelas=X%20IPA%201&minggu_tabel=2026-09-28&page=2');
         $nextPage->assertOk()->assertJsonPath('count', 1)->assertJsonPath('nextPageUrl', null);
         $this->assertSame(3, substr_count($nextPage->json('html'), 'class="attendance-select"'));
-        $this->assertStringContainsString('<td class="no">51</td>', $nextPage->json('html'));
+        $this->assertStringContainsString('<td class="no">16</td>', $nextPage->json('html'));
+    }
+
+    public function test_student_report_tables_load_more_rows_in_fifteen_row_batches(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 2']);
+        foreach (range(1, 16) as $number) {
+            $student = Student::query()->create([
+                'induk' => (string) (12800000 + $number),
+                'nama' => 'Laporan Siswa '.$number,
+                'jenis_kelamin' => 'L',
+                'id_kelas' => $classroom->id,
+            ]);
+            Attendance::query()->create([
+                'id_siswa' => $student->id,
+                'tanggal' => '2026-09-28',
+                'status' => 'A',
+            ]);
+        }
+
+        $this->actingAs($this->makeUser('admin'));
+        $this->get('/laporan?bulan=9&tahun=2026')
+            ->assertOk()
+            ->assertSee('data-progressive-table', false)
+            ->assertSee('16</strong></div>', false);
+        $this->getJson('/laporan?bulan=9&tahun=2026&page=1')
+            ->assertOk()
+            ->assertJsonPath('count', 15);
+        $this->getJson('/laporan?bulan=9&tahun=2026&page=2')
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('nextPageUrl', null)
+            ->assertSee('Laporan Siswa 9');
+
+        $this->get('/alpha?bulan=9&tahun=2026')
+            ->assertOk()
+            ->assertSee('data-progressive-table', false)
+            ->assertSee('Siswa dengan alpha');
+        $this->getJson('/alpha?bulan=9&tahun=2026&page=1')
+            ->assertOk()
+            ->assertJsonPath('count', 15);
+        $this->getJson('/alpha?bulan=9&tahun=2026&page=2')
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('nextPageUrl', null);
+    }
+
+    public function test_haid_over_limit_student_table_loads_more_rows_in_fifteen_row_batches(): void
+    {
+        $students = collect(range(1, 16))->map(static fn (int $number): array => [
+            'induk' => (string) (12900000 + $number),
+            'nama' => 'Siswi Haid '.$number,
+            'kelas' => 'X IPA 1',
+            'start_date' => '2026-10-01',
+            'last_haid_date' => '2026-10-31',
+            'days' => 31,
+        ]);
+        $monitor = Mockery::mock(HaidDurationMonitor::class);
+        $monitor->shouldReceive('activeOverLimit')->times(3)->andReturn($students);
+        $this->app->instance(HaidDurationMonitor::class, $monitor);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->get('/laporan/haid-lebih-15-hari')
+            ->assertOk()
+            ->assertSee('15 dari 16 siswi ditampilkan')
+            ->assertSee('data-progressive-table', false);
+        $this->getJson('/laporan/haid-lebih-15-hari?page=1')
+            ->assertOk()
+            ->assertJsonPath('count', 15);
+        $this->getJson('/laporan/haid-lebih-15-hari?page=2')
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('nextPageUrl', null)
+            ->assertSee('Siswi Haid 16');
     }
 
     public function test_excel_and_a4_exports_return_real_workbooks(): void

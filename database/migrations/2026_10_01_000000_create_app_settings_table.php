@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('app_settings', function (Blueprint $table): void {
             $table->id();
             $table->string('key')->unique();
-            $table->string('value')->nullable();
+            $table->longText('value')->nullable();
         });
     }
 

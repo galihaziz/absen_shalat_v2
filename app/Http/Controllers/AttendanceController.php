@@ -199,7 +199,7 @@ class AttendanceController extends Controller
                 ->when($search !== '', fn ($query) => $query->where('nama', 'like', '%'.$search.'%'))
                 ->orderBy('nama')
                 ->orderBy('id')
-                ->simplePaginate(50)
+                ->simplePaginate(15)
                 ->withQueryString();
 
             if ($students->isNotEmpty()) {

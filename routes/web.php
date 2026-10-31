@@ -59,10 +59,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/export_a4', [ExportController::class, 'print'])->middleware('throttle:5,1')->name('attendance.print.download');
 
     Route::middleware('role:admin,kesiswaan')->group(function () {
-        Route::get('/laporan', [ReportController::class, 'index'])->middleware('throttle:30,1')->name('reports.index');
+        Route::get('/laporan', [ReportController::class, 'index'])->middleware('throttle:120,1')->name('reports.index');
         Route::get('/laporan/haid-lebih-15-hari', [ReportController::class, 'haidOverLimit'])->name('reports.haid-over-limit');
         Route::post('/laporan/batas-scan', [ReportController::class, 'updateScanCutoff'])->name('reports.scan-cutoff.update');
-        Route::get('/alpha', [ReportController::class, 'alpha'])->middleware('throttle:30,1')->name('reports.alpha');
+        Route::get('/alpha', [ReportController::class, 'alpha'])->middleware('throttle:120,1')->name('reports.alpha');
         Route::get('/export_excel', [ExportController::class, 'excel'])->middleware('throttle:5,1')->name('reports.export');
     });
 
@@ -118,6 +118,6 @@ Route::middleware('auth')->group(function () {
             ->where('progressToken', '[0-9a-fA-F-]{36}')
             ->middleware('throttle:120,1')
             ->name('students.import.progress');
-        Route::post('/import_siswa/konfirmasi', [ImportController::class, 'confirm'])->middleware('throttle:5,1')->name('students.import.confirm');
+        Route::post('/import_siswa/konfirmasi', [ImportController::class, 'confirm'])->name('students.import.confirm');
     });
 });

@@ -144,7 +144,7 @@
 <footer class="site-footer">
     <div class="site-footer-content">
         <span>© {{ now()->year }} Rekap Absensi Solat</span>
-        <span>Dikembangkan oleh <strong>Galih Aziz Wahyudi</strong></span>
+        <span>Dikembangkan oleh <strong>Irma</strong></span>
     </div>
 </footer>
 @stack('scripts')

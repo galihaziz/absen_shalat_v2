@@ -71,7 +71,7 @@ class NativeFlowMigrationTest extends TestCase
 
         $this->get('http://siswa.example.test/')->assertOk()
             ->assertSee('action="http://siswa.example.test"', false)->assertSee('Nomor induk')->assertSee('PIN')
-            ->assertSee('© '.now()->year, false)->assertSee('Dikembangkan oleh')->assertSee('Galih Aziz Wahyudi');
+            ->assertSee('© '.now()->year, false)->assertSee('Dikembangkan oleh')->assertSee('Irma');
         $this->get('http://siswa.example.test/siswa/login')->assertRedirect('http://siswa.example.test');
         $this->post('http://siswa.example.test/', ['induk' => $student->induk, 'pin' => 'siswa123'])
             ->assertRedirect('http://siswa.example.test/siswa/kartu');

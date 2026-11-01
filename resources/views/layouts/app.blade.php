@@ -53,7 +53,7 @@
         <img class="brand-logo" src="{{ $irmaLogoUrl }}" alt="Logo IRMA">
         <span>Rekap Absensi Solat</span>
     </a>
-    @auth
+    @if(auth()->check() && ! session()->has('student_portal_id'))
         @php($currentUser = auth()->user())
         @php($currentRole = $currentUser->getAttribute('role'))
         <nav class="nav-links" id="mainNavigation">
@@ -92,7 +92,6 @@
         @php($portalStudent = request()->attributes->get('studentPortalStudent'))
         <nav class="nav-links student-portal-nav" aria-label="Navigasi siswa">
             <a href="{{ route('student.portal.card') }}"><span class="nav-lens-label">Kartu / QR</span></a>
-            <a href="{{ route('student.portal.face') }}" class="{{ request()->routeIs('student.portal.face') ? 'is-active' : '' }}"><span class="nav-lens-label">Scan Wajah</span></a>
         </nav>
         <div class="account">
             <span>{{ $portalStudent?->nama ?? 'Siswa' }}</span>
@@ -109,7 +108,7 @@
             <span class="theme-toggle-icon theme-toggle-sun" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg></span>
             <span class="theme-toggle-icon theme-toggle-moon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M20.2 15.5A8.5 8.5 0 0 1 8.5 3.8 8.6 8.6 0 1 0 20.2 15.5Z"></path></svg></span>
         </button>
-    @endauth
+    @endif
 </header>
 @endunless
 @if($isStudentRoot)

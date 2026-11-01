@@ -140,8 +140,8 @@ class StudentPortalController extends Controller
         $photoDataUri = null;
 
         if ($photoPath !== null) {
-            $extension = pathinfo($photoPath, PATHINFO_EXTENSION);
-            $mimeType = $extension === 'jpg' ? 'image/jpeg' : 'image/'.$extension;
+            $extension = strtolower(pathinfo($photoPath, PATHINFO_EXTENSION));
+            $mimeType = in_array($extension, ['jpg', 'jpeg'], true) ? 'image/jpeg' : 'image/'.$extension;
             $photoContents = Storage::disk('local')->get($photoPath);
             $photoDataUri = $forPdf
                 ? $this->photoProcessor->coverDataUri($photoContents, $mimeType, 500, $templateDataUri !== null ? 597 : 637)
@@ -164,10 +164,13 @@ class StudentPortalController extends Controller
     {
         $disk = Storage::disk('local');
 
-        foreach (['jpg', 'jpeg', 'png', 'webp'] as $extension) {
-            foreach (['foto-siswa/'.substr($induk, 0, 3), 'foto-siswa'] as $directory) {
-                $path = $directory.'/'.$induk.'.'.$extension;
-                if ($disk->exists($path)) {
+        foreach (['foto-siswa/'.substr($induk, 0, 3), 'foto-siswa'] as $directory) {
+            if (! $disk->directoryExists($directory)) {
+                continue;
+            }
+
+            foreach ($disk->files($directory) as $path) {
+                if (preg_match('/^'.preg_quote($induk, '/').'\.(?:jpe?g|png|webp)$/i', basename($path)) === 1) {
                     return $path;
                 }
             }

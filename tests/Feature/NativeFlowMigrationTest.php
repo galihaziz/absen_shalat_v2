@@ -1342,7 +1342,7 @@ class NativeFlowMigrationTest extends TestCase
         Student::query()->create([
             'induk' => '1234502', 'nama' => 'Siswa Portal Kedua', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
         ]);
-        Storage::disk('local')->put('foto-siswa/123/1234501.jpg', UploadedFile::fake()->image('foto.jpg')->getContent());
+        Storage::disk('local')->put('foto-siswa/123/1234501.JPG', UploadedFile::fake()->image('foto.jpg')->getContent());
         Storage::disk('local')->put('template-kartu/active.png', UploadedFile::fake()->image('card.png', 600, 1000)->getContent());
 
         $this->post('/siswa/login', ['induk' => $firstStudent->induk, 'pin' => 'wrong-pin'])
@@ -1386,6 +1386,27 @@ class NativeFlowMigrationTest extends TestCase
         $this->post('/siswa/login', ['induk' => $firstStudent->induk, 'pin' => 'siswa-1234'])
             ->assertRedirect(route('student.portal.card'));
         $this->get('/siswa/kartu')->assertOk()->assertSee('Siswa Portal Pertama');
+    }
+
+    public function test_student_portal_navigation_is_limited_when_staff_session_also_exists(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'XII PS 1']);
+        $student = Student::query()->create([
+            'induk' => '1234598', 'nama' => 'Siswa Portal Navbar', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->withSession(['student_portal_id' => $student->id])
+            ->get(route('student.portal.pin.edit'))
+            ->assertOk()
+            ->assertSee('student-portal-nav')
+            ->assertSee('Kartu / QR')
+            ->assertSee('Scan Wajah')
+            ->assertSee($student->nama)
+            ->assertDontSee('mainNavigation')
+            ->assertDontSee(route('students.index'), false)
+            ->assertDontSee('Admin · admin');
     }
 
     public function test_staff_can_reset_a_student_portal_pin(): void

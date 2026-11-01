@@ -524,6 +524,17 @@ class StudentController extends Controller
                     ->values()
                     ->all();
 
+                if ($data['photo_scope'] === 'class') {
+                    $firstTwoNameMatches = $students
+                        ->filter(fn (Student $student): bool => $this->studentPhotoFirstTwoNamesMatch((string) $student->nama, $key))
+                        ->values()
+                        ->all();
+
+                    if ($firstTwoNameMatches !== []) {
+                        $matches = $firstTwoNameMatches;
+                    }
+                }
+
                 if (count($matches) > 1) {
                     $matches = array_values(array_filter($matches, fn (Student $student): bool => $this->normalizeStudentPhotoName((string) $student->nama) === $key));
                 }
@@ -587,6 +598,16 @@ class StudentController extends Controller
         $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
 
         return mb_strtolower(trim($normalized), 'UTF-8');
+    }
+
+    private function studentPhotoFirstTwoNamesMatch(string $studentName, string $photoName): bool
+    {
+        $studentWords = preg_split('/\s+/u', $this->normalizeStudentPhotoName($studentName), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $photoWords = preg_split('/\s+/u', $this->normalizeStudentPhotoName($photoName), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return count($studentWords) >= 2
+            && count($photoWords) >= 2
+            && array_slice($studentWords, 0, 2) === array_slice($photoWords, 0, 2);
     }
 
     private function studentPhotoNameMatches(string $studentName, string $photoName): bool

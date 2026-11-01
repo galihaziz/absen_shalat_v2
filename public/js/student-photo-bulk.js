@@ -63,7 +63,9 @@
     function updateMatchHelp() {
         if (!matchHelp || !matchBy) return;
         matchHelp.textContent = matchBy.value === 'nama'
-            ? 'Contoh nama file: Nama_Sis.jpg. Gunakan potongan nama yang jelas; jika ada nama mirip, gunakan pencocokan nomor induk.'
+            ? scopeSelect.value === 'class'
+                ? 'Contoh nama file: Nama_Dua.jpg. Untuk satu kelas, dua nama pertama yang tepat sudah cukup meski nama siswa di file tidak lengkap.'
+                : 'Contoh nama file: Nama_Sis.jpg. Gunakan potongan nama yang jelas; jika ada nama mirip, gunakan pencocokan nomor induk.'
             : 'Contoh nama file: 123456.jpg. Pastikan nomor induk pada nama file sesuai dengan data siswa.';
     }
 
@@ -186,7 +188,10 @@
     });
 
     updateScopeTargets();
-    scopeSelect.addEventListener('change', updateScopeTargets);
+    scopeSelect.addEventListener('change', () => {
+        updateScopeTargets();
+        updateMatchHelp();
+    });
     matchBy?.addEventListener('change', updateMatchHelp);
     updateMatchHelp();
     fileInput.addEventListener('change', () => {

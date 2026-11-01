@@ -937,6 +937,57 @@ class NativeFlowMigrationTest extends TestCase
         $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
     }
 
+    public function test_class_photo_upload_matches_the_first_two_names_when_the_photo_filename_is_incomplete(): void
+    {
+        Storage::fake('local');
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+        $student = Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Amelia Putri Sari', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654322', 'nama' => 'Amelia Putrianisa', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa/foto/massal', [
+                'photo_scope' => 'class',
+                'photo_classroom_id' => $classroom->id,
+                'match_by' => 'nama',
+                'fotos' => [UploadedFile::fake()->image('Amelia_Putri.jpg')],
+            ])
+            ->assertRedirect(route('students.index'))
+            ->assertSessionHas('status', '1 foto siswa berhasil diunggah.');
+
+        $this->assertTrue(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
+    }
+
+    public function test_major_grade_photo_upload_does_not_use_the_class_first_two_name_match(): void
+    {
+        Storage::fake('local');
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+        Student::query()->create([
+            'induk' => '7654321', 'nama' => 'Amelia Putri Sari', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+        Student::query()->create([
+            'induk' => '7654322', 'nama' => 'Amelia Putrianisa', 'jenis_kelamin' => 'P', 'id_kelas' => $classroom->id,
+        ]);
+
+        $this->actingAs($this->makeUser('admin'))
+            ->post('/data_siswa/foto/massal', [
+                'photo_scope' => 'major_grade',
+                'photo_grade' => 'X',
+                'photo_major' => 'IPA',
+                'match_by' => 'nama',
+                'fotos' => [UploadedFile::fake()->image('Amelia_Putri.jpg')],
+            ])
+            ->assertRedirect(route('students.index'))
+            ->assertSessionHas('warning');
+
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654321.jpg'));
+        $this->assertFalse(Storage::disk('local')->exists('foto-siswa/765/7654322.jpg'));
+    }
+
     public function test_mass_student_photo_upload_returns_json_for_sequential_hosting_uploads(): void
     {
         Storage::fake('local');

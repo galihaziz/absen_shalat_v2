@@ -225,7 +225,7 @@
                         </select>
                     </label>
                 </div>
-                <p class="student-photo-match-help" data-photo-match-help>Contoh nama file: <strong>123456.jpg</strong>. Pastikan nomor induk pada nama file sesuai dengan data siswa.</p>
+                <p class="student-photo-match-help" data-photo-match-help>Contoh nama file: <strong>123456.jpg</strong>. Jika menggunakan pencocokan nama untuk satu kelas, dua nama pertama yang tepat sudah cukup.</p>
                 <label class="student-photo-dropzone">
                     <input type="file" name="fotos[]" accept=".jpg,.jpeg,.png,.webp" multiple required data-student-photo-files aria-describedby="studentPhotoFileHint">
                     <span class="student-photo-dropzone-icon" aria-hidden="true">↑</span>

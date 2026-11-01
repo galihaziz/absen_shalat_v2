@@ -410,6 +410,7 @@ tbody tr:hover { background: #f7faf8; }
 .qr-student-details { top: 47mm; left: 2mm; width: 49.98mm; height: 22mm; overflow: hidden; }
 .qr-student-details h2 { margin: 0 0 .8mm; color: var(--green-dark); font-size: 8pt; font-weight: 700; line-height: 1.12; overflow-wrap: anywhere; }
 .qr-student-details p { margin: 0 0 .5mm; color: var(--muted); font-size: 6pt; line-height: 1.15; }
+.qr-student-details p:first-of-type { font-size: 7pt; }
 .qr-student-details p:last-child { margin-bottom: 0; color: var(--green); font-size: 6.5pt; font-weight: 700; }
 .qr-student-card--with-template .qr-student-details { top: 55mm; left: 3.99mm; width: 46mm; height: 17mm; overflow: visible; text-align: center; }
 .qr-student-card--with-template .qr-student-details h2,
@@ -430,6 +431,7 @@ tbody tr:hover { background: #f7faf8; }
 .qr-student-back-details { position: absolute; top: 11mm; left: 2mm; width: 49.98mm; height: 18mm; overflow: hidden; text-align: center; }
 .qr-student-back-details h2 { margin: 0 0 .8mm; color: var(--green-dark); font-size: 8pt; font-weight: 700; line-height: 1.12; overflow-wrap: anywhere; }
 .qr-student-back-details p { margin: 0 0 .5mm; color: var(--muted); font-size: 6pt; line-height: 1.15; }
+.qr-student-back-details p:first-of-type { font-size: 7pt; }
 .qr-student-back-details p:last-child { margin-bottom: 0; color: var(--green); font-size: 6.5pt; font-weight: 700; }
 .qr-student-back-details strong { color: inherit; }
 .qr-student-code-frame { position: absolute; top: 30mm; left: 10.49mm; display: grid; width: 33mm; height: 33mm; place-items: center; margin: 0; padding: 1mm; background: #fff; }

@@ -1,5 +1,7 @@
 @props(['student', 'photoSrc' => null, 'qrSrc', 'pdf' => false, 'templateSrc' => null, 'side' => 'both'])
 
+@php($nameFontSize = max(5, min(8, 8 * 32 / max(mb_strlen($student->nama, 'UTF-8'), 32))))
+
 <div class="qr-student-card-set{{ $pdf ? ' qr-student-card-set-pdf' : '' }}">
     @if(in_array($side, ['both', 'front'], true))
         <section class="qr-student-card qr-student-card--front{{ $templateSrc ? ' qr-student-card--with-template' : '' }}">
@@ -20,7 +22,7 @@
                 @endif
             </div>
             <div class="qr-student-details">
-                <h2>{{ $student->nama }}</h2>
+                <h2 style="font-size: {{ $nameFontSize }}pt">{{ $student->nama }}</h2>
                 <p><strong>{{ $student->induk }}</strong></p>
                 <p><strong>{{ $student->classroom->majorLabel() }}</strong></p>
             </div>
@@ -39,7 +41,7 @@
                 <span class="qr-student-card-cutline-left"></span>
             </div>
             <div class="qr-student-back-details">
-                <h2>{{ $student->nama }}</h2>
+                <h2 style="font-size: {{ $nameFontSize }}pt">{{ $student->nama }}</h2>
                 <p><strong>{{ $student->induk }}</strong></p>
                 <p><strong>{{ $student->classroom->majorLabel() }}</strong></p>
             </div>

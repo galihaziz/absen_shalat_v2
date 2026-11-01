@@ -17,8 +17,9 @@
 .qr-student-card-set-pdf .qr-student-card--with-template .qr-student-photo { width: 20mm; height: 24mm; }
 .qr-student-card-set-pdf .qr-student-photo-placeholder { display: block; width: 100%; height: 100%; background: #edf4f0; color: #617276; text-align: center; line-height: 30mm; font-size: 5pt; }
 .qr-student-card-set-pdf .qr-student-details { top: 47mm; left: 2mm; width: 49.98mm; height: 22mm; overflow: hidden; }
-.qr-student-card-set-pdf .qr-student-details h2 { margin: 0 0 .8mm; color: #0c4c3e; font-size: 8pt; font-weight: 700; line-height: 1.12; }
+.qr-student-card-set-pdf .qr-student-details h2 { margin: 0 0 .8mm; color: #0c4c3e; font-size: 8pt; font-weight: 700; line-height: 1.12; overflow-wrap: anywhere; word-wrap: break-word; }
 .qr-student-card-set-pdf .qr-student-details p { margin: 0 0 .5mm; color: #617276; font-size: 6pt; line-height: 1.15; }
+.qr-student-card-set-pdf .qr-student-details p:first-of-type { font-size: 7pt; }
 .qr-student-card-set-pdf .qr-student-details p:last-child { color: #126b55; font-size: 6.5pt; font-weight: 700; }
 .qr-student-card-set-pdf .qr-student-details strong { color: #172a2c; }
 .qr-student-card-set-pdf .qr-student-card--with-template .qr-student-details { top: 55mm; left: 3.99mm; width: 46mm; height: 17mm; overflow: visible; text-align: center; }
@@ -37,7 +38,7 @@
 .qr-student-card-set-pdf .qr-student-card-cutline-bottom { bottom: 0; }
 .qr-student-card-set-pdf .qr-student-card-cutline-left { left: 0; }
 .qr-student-card-set-pdf .qr-student-back-details { position: absolute; top: 11mm; left: 2mm; width: 49.98mm; height: 18mm; overflow: hidden; text-align: center; }
-.qr-student-card-set-pdf .qr-student-back-details h2 { margin: 0 0 .8mm; color: #0c4c3e; font-size: 8pt; font-weight: 700; line-height: 1.12; }
+.qr-student-card-set-pdf .qr-student-back-details h2 { margin: 0 0 .8mm; color: #0c4c3e; font-size: 8pt; font-weight: 700; line-height: 1.12; overflow-wrap: anywhere; word-wrap: break-word; }
 .qr-student-card-set-pdf .qr-student-back-details p { margin: 0 0 .5mm; color: #617276; font-size: 6pt; line-height: 1.15; }
 .qr-student-card-set-pdf .qr-student-back-details p:last-child { margin-bottom: 0; color: #126b55; font-size: 6.5pt; font-weight: 700; }
 .qr-student-card-set-pdf .qr-student-back-details strong { color: #172a2c; }
@@ -50,6 +51,7 @@
 .qr-student-card-set-pdf .qr-student-card--with-template .qr-student-photo { width: 20mm; height: 23.65mm; }
 .qr-student-card-set-pdf .qr-student-card--with-template .qr-student-details h2 { margin: 0 0 1mm; color: #fff; font-size: 8pt; font-weight: 700; line-height: 1.2; }
 .qr-student-card-set-pdf .qr-student-card--with-template .qr-student-details p { margin: 0 0 .8mm; color: #fff; font-size: 6.5pt; line-height: 1.2; }
+.qr-student-card-set-pdf .qr-student-card--with-template .qr-student-details p:first-of-type { font-size: 7pt; }
 .qr-student-card-set-pdf .qr-student-card--with-template .qr-student-details p:last-child { color: #f2e900; }
 .qr-student-card-set-pdf .qr-student-card--back { border: 0; }
 .qr-student-card-set-pdf .qr-student-card--front > .qr-student-photo-frame,
@@ -59,5 +61,6 @@
 .qr-student-card-set-pdf .qr-student-card--front > .qr-student-details { position: absolute; z-index: 1; top: 54mm; left: 3.99mm; width: 46mm; height: 18mm; margin: 0; overflow: visible; text-align: center; }
 .qr-student-card-set-pdf .qr-student-card--front.qr-student-card--with-template > .qr-student-details h2 { margin: 0 0 1mm; color: #fff; font-size: 8pt; font-weight: 700; line-height: 1.2; }
 .qr-student-card-set-pdf .qr-student-card--front.qr-student-card--with-template > .qr-student-details p { margin: 0 0 .8mm; color: #fff; font-size: 6.5pt; line-height: 1.2; }
+.qr-student-card-set-pdf .qr-student-card--front.qr-student-card--with-template > .qr-student-details p:first-of-type { font-size: 7pt; }
 .qr-student-card-set-pdf .qr-student-card--front.qr-student-card--with-template > .qr-student-details p:last-child { color: #f2e900; }
 .qr-student-card-set-pdf .qr-student-card--front.qr-student-card--with-template > .qr-student-details p strong { color: inherit; }

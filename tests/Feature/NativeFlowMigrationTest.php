@@ -704,6 +704,23 @@ class NativeFlowMigrationTest extends TestCase
         $this->get('/template_kartu')->assertOk()->assertSee('Belum ada template');
     }
 
+    public function test_student_card_name_font_scales_down_for_long_names_on_both_sides(): void
+    {
+        $classroom = Classroom::query()->create(['nama' => 'X IPA 1']);
+        $name = str_repeat('Nama Siswa ', 5);
+        $student = Student::query()->create([
+            'induk' => '2345678', 'nama' => $name, 'jenis_kelamin' => 'L', 'id_kelas' => $classroom->id,
+        ]);
+
+        $html = $this->actingAs($this->makeUser('admin'))
+            ->get('/data_siswa/'.$student->id.'/qr')
+            ->assertOk()
+            ->getContent();
+
+        $expectedFontSize = max(5, min(8, 8 * 32 / max(mb_strlen($name, 'UTF-8'), 32)));
+        $this->assertSame(2, substr_count($html, 'style="font-size: '.$expectedFontSize.'pt"'));
+    }
+
     public function test_only_admin_can_manage_student_card_template(): void
     {
         $this->actingAs($this->makeUser('kesiswaan'))->get('/template_kartu')->assertForbidden();

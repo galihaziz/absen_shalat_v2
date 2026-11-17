@@ -103,6 +103,14 @@ Saat membuat atau mengubah akun melalui menu **Pengguna**, akun dengan role `adm
 
 Untuk mengirim melalui Gmail, isi `.env` dengan `MAIL_MAILER=smtp`, `MAIL_HOST=smtp.gmail.com`, `MAIL_PORT=587`, `MAIL_ENCRYPTION=tls`, dan `MAIL_USERNAME`/`MAIL_FROM_ADDRESS` sesuai akun pengirim. Buat **Google App Password** (akun Google harus mengaktifkan verifikasi 2 langkah) lalu simpan App Password itu sebagai `MAIL_PASSWORD` di `.env` saja — jangan gunakan password login Gmail dan jangan bagikan atau commit rahasia tersebut. Pastikan `APP_URL` memakai alamat aplikasi yang dapat dibuka admin dari email. Setelah mengubah `.env`, jalankan `php artisan config:clear`.
 
+### Pendaftaran petugas
+
+Petugas dapat mendaftar di halaman `/staff/register` menggunakan nama, username, email/Gmail, password, dan konfirmasi password. Username dan email harus unik; password minimal 8 karakter. Pendaftaran mandiri selalu mendapat role `absensi` dan menunggu persetujuan admin melalui menu **Pengguna**; role admin dan kesiswaan hanya dapat diberikan admin saat mengelola akun. Saat admin membuat akun dari menu **Pengguna**, password dan konfirmasinya wajib diisi untuk semua role. Saat mengubah akun, password boleh dikosongkan; jika diisi, konfirmasinya wajib cocok. Email wajib untuk admin dan opsional untuk role lainnya saat dikelola admin. Login menggunakan username dan password; alamat email pendaftaran disimpan dan tidak dipakai untuk OAuth.
+
+Setelah pembaruan, jalankan `php artisan migrate --force` di server produksi untuk menambahkan status persetujuan dan pencatat petugas. OAuth Google tidak diperlukan dan tidak ada kredensial Google yang harus dikonfigurasi.
+
+Catatan kehadiran hasil scan QR, scan wajah petugas, dan perubahan manual menyimpan akun petugas yang melakukan pencatatan. Nama petugas ditampilkan pada sel tanggal di tabel absensi; catatan lama tidak memiliki identitas petugas dan tetap ditampilkan tanpa nama. Presensi mandiri dari portal siswa tidak dianggap sebagai tindakan petugas.
+
 ## Peran
 
 - `admin`: seluruh fitur, termasuk pengguna dan import.

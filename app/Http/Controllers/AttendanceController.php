@@ -82,7 +82,7 @@ class AttendanceController extends Controller
         }
 
         $status = $isHaid ? 'M' : 'H';
-        $record = $recorder->record($student, $status, $now);
+        $record = $recorder->record($student, $status, $now, $request->user()->id);
         $alreadyPresent = $record['already_present'];
         $alreadyRecorded = $record['already_recorded'];
         $scanTime = $record['attendance']->waktu_scan ?? $now;
@@ -98,6 +98,7 @@ class AttendanceController extends Controller
             'tanggal' => $record['attendance']->tanggal,
             'waktu_scan' => $scanTime->format('H:i:s'),
             'keterangan' => $isHaid ? 'M' : 'H',
+            'operator' => $record['attendance']->recordedBy()->value('nama'),
         ]);
     }
 
@@ -191,6 +192,7 @@ class AttendanceController extends Controller
         $students = collect();
         $attendance = [];
         $attendanceTimes = [];
+        $attendanceOperators = [];
 
         if ($selectedClass !== '') {
             $students = Student::query()
@@ -206,11 +208,15 @@ class AttendanceController extends Controller
                 Attendance::query()
                     ->whereIn('id_siswa', $students->pluck('id'))
                     ->whereBetween('tanggal', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-                    ->get(['id_siswa', 'tanggal', 'status', 'waktu_scan'])
-                    ->each(function (Attendance $record) use (&$attendance, &$attendanceTimes): void {
+                    ->with('recordedBy:id,nama')
+                    ->get(['id_siswa', 'tanggal', 'status', 'waktu_scan', 'recorded_by_user_id'])
+                    ->each(function (Attendance $record) use (&$attendance, &$attendanceTimes, &$attendanceOperators): void {
                         $attendance[$record->id_siswa][$record->tanggal] = $record->status;
                         if ($record->waktu_scan !== null) {
                             $attendanceTimes[$record->id_siswa][$record->tanggal] = $record->waktu_scan->format('H:i:s');
+                        }
+                        if ($record->recordedBy !== null) {
+                            $attendanceOperators[$record->id_siswa][$record->tanggal] = $record->recordedBy->nama;
                         }
                     });
             }
@@ -241,7 +247,7 @@ class AttendanceController extends Controller
 
         if ($request->expectsJson()) {
             return response()->json([
-                'html' => view('attendance._rows', compact('students', 'attendance', 'attendanceTimes', 'attendanceTotals', 'visibleDates', 'weeks', 'selectedTableWeek'))->render(),
+                'html' => view('attendance._rows', compact('students', 'attendance', 'attendanceTimes', 'attendanceOperators', 'attendanceTotals', 'visibleDates', 'weeks', 'selectedTableWeek'))->render(),
                 'nextPageUrl' => $students->nextPageUrl(),
                 'count' => $students->count(),
             ]);
@@ -251,7 +257,7 @@ class AttendanceController extends Controller
 
         return view('attendance.index', compact(
             'month', 'year', 'selectedClass', 'search', 'start', 'end', 'dates', 'weeks',
-            'selectedTableWeek', 'visibleDates', 'classes', 'students', 'attendance', 'attendanceTimes', 'attendanceTotals', 'monthNames',
+            'selectedTableWeek', 'visibleDates', 'classes', 'students', 'attendance', 'attendanceTimes', 'attendanceOperators', 'attendanceTotals', 'monthNames',
             'today', 'todayStudentCount', 'todayTotals', 'todayUnmarkedCount', 'todayScannedCount', 'lastScanAt',
             'classProgress', 'progressGrades', 'progressMajors', 'haidOverLimitCount'
         ));
@@ -277,9 +283,14 @@ class AttendanceController extends Controller
             return response()->json(['success' => true, 'status' => '']);
         }
 
-        Attendance::query()->updateOrCreate($attendanceKey, ['status' => $status, 'waktu_scan' => null]);
+        $user = $request->user();
+        $attendance = Attendance::query()->updateOrCreate($attendanceKey, [
+            'status' => $status,
+            'waktu_scan' => null,
+            'recorded_by_user_id' => $user->id,
+        ]);
 
-        return response()->json(['success' => true]);
+        return response()->json(['success' => true, 'operator' => $user->nama]);
     }
 
     public function delete(Request $request): JsonResponse

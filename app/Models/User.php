@@ -11,9 +11,16 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['username', 'email', 'password', 'nama', 'role'];
+    protected $fillable = [
+        'username', 'email', 'password', 'nama', 'role', 'approval_status',
+    ];
 
     protected $hidden = ['password'];
 
     public $timestamps = false;
+
+    protected function casts(): array
+    {
+        return ['approved_at' => 'datetime'];
+    }
 }

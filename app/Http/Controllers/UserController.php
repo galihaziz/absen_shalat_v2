@@ -15,6 +15,10 @@ class UserController extends Controller
     public function index(Request $request): View
     {
         $search = trim((string) $request->query('cari', ''));
+        $pendingUsers = User::query()
+            ->where('approval_status', 'pending')
+            ->orderBy('username')
+            ->get();
         $users = User::query()
             ->when($search !== '', fn ($query) => $query->where(fn ($subquery) => $subquery
                 ->where('username', 'like', '%'.$search.'%')
@@ -24,12 +28,13 @@ class UserController extends Controller
             ->orderBy('role')->orderBy('username')->get();
         $editing = $request->filled('edit') ? User::query()->find($request->integer('edit')) : null;
 
-        return view('users.index', compact('users', 'editing', 'search'));
+        return view('users.index', compact('users', 'pendingUsers', 'editing', 'search'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $id = $request->integer('id');
+        $user = $id ? User::query()->findOrFail($id) : new User;
         $data = $request->validate([
             'id' => ['nullable', 'integer', 'exists:users,id'],
             'username' => ['required', 'string', 'max:50', Rule::unique('users', 'username')->ignore($id ?: null)],
@@ -40,17 +45,15 @@ class UserController extends Controller
                 'nullable',
                 'email',
                 'max:255',
-                'prohibited_unless:role,admin',
                 Rule::unique('users', 'email')->ignore($id ?: null),
             ],
-            'password' => [$id ? 'nullable' : 'required', 'string'],
+            'password' => [$id ? 'nullable' : 'required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $user = $id ? User::query()->findOrFail($id) : new User;
         $user->username = $data['username'];
         $user->nama = $data['nama'];
         $user->role = $data['role'];
-        $user->email = $data['role'] === 'admin' ? ($data['email'] ?? null) : null;
+        $user->email = isset($data['email']) ? mb_strtolower($data['email']) : null;
         if (! empty($data['password'])) {
             $user->password = Hash::make($data['password']);
         }
@@ -62,6 +65,32 @@ class UserController extends Controller
         }
 
         return redirect()->route('users.index')->with('status', $id ? 'User berhasil diperbarui.' : 'User berhasil ditambahkan.');
+    }
+
+    public function approve(User $user, Request $request): RedirectResponse
+    {
+        abort_unless($user->approval_status === 'pending', 404);
+
+        $user->forceFill([
+            'approval_status' => 'approved',
+            'approved_at' => now(),
+            'approved_by' => $request->user()->id,
+        ])->save();
+
+        return redirect()->route('users.index')->with('status', 'Akun '.$user->nama.' berhasil disetujui.');
+    }
+
+    public function reject(User $user, Request $request): RedirectResponse
+    {
+        abort_unless($user->approval_status === 'pending', 404);
+
+        $user->forceFill([
+            'approval_status' => 'rejected',
+            'approved_at' => null,
+            'approved_by' => $request->user()->id,
+        ])->save();
+
+        return redirect()->route('users.index')->with('status', 'Pendaftaran '.$user->nama.' ditolak.');
     }
 
     public function destroy(Request $request, User $user): RedirectResponse

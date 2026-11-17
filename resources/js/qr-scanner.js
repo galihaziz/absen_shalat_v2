@@ -48,6 +48,7 @@ if (panel) {
             document.getElementById('qrStudentInduk').textContent = `Induk ${payload.student.induk}`;
             document.getElementById('qrStudentClass').textContent = payload.student.kelas;
             document.getElementById('qrStudentScanDate').textContent = `Tanggal ${payload.tanggal} · Jam ${payload.waktu_scan}`;
+            document.getElementById('qrAttendanceOperator').textContent = payload.operator ? `Dicatat oleh ${payload.operator}` : '';
             document.getElementById('qrAttendanceMessage').textContent = payload.message;
             resultPanel.hidden = false;
             const statusMessage = payload.already_recorded ? 'Sudah tercatat' : 'Berhasil dicatat';

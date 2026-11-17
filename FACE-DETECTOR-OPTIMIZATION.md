@@ -2,12 +2,13 @@
 
 ## Ringkasan
 
-Optimasi difokuskan pada pengurangan pekerjaan yang tidak diperlukan saat presensi, penghematan render canvas, dan pengumpulan data performa pada perangkat pengguna. Perubahan ini mempertahankan face-api.js dan format descriptor wajah yang sudah tersimpan.
+Optimasi difokuskan pada pengurangan pekerjaan yang tidak diperlukan saat presensi, penghematan render canvas, dan pengumpulan data performa pada perangkat pengguna. Scanner menggunakan `@vladmandic/face-api` 1.7.15 dengan alur deteksi dan format descriptor 128 angka yang kompatibel dengan data wajah yang sudah tersimpan.
 
 ## Perubahan
 
 ### `public/js/face-scanner.js`
 
+- Memperbarui runtime ke `@vladmandic/face-api` 1.7.15. Bobot model pengenalan tetap menggunakan model lama yang sudah dipakai aplikasi agar format descriptor 128 angka dan data registrasi yang tersimpan tetap kompatibel.
 - Presensi hanya menjalankan deteksi kotak wajah. Model landmark tetap digunakan untuk panduan pose registrasi dan proses pengambilan descriptor, tetapi tidak lagi dijalankan pada setiap deteksi presensi karena hasil landmark pada tahap itu tidak digunakan.
 - Animasi kotak wajah tidak lagi menjalankan `requestAnimationFrame` tanpa henti. Canvas dirender saat hasil deteksi berubah dan hanya melanjutkan animasi selama smoothing masih diperlukan.
 - Smoothing kotak menggunakan waktu respons yang lebih panjang agar gerakan tidak menyentak: 130 ms untuk perubahan kecil dan 75 ms saat wajah bergerak cepat, supaya kotak tetap halus tanpa terlalu tertinggal.
@@ -22,10 +23,12 @@ Optimasi difokuskan pada pengurangan pekerjaan yang tidak diperlukan saat presen
 
 ### `resources/views/attendance/face-scan.blade.php`
 
+- Memperbarui area kamera dengan indikator status kamera, petunjuk preview, dan versi library scanner yang dipatok.
 - Menambahkan elemen ringkasan performa yang muncul setelah pengukuran awal tersedia.
 
 ### `public/css/app.css`
 
+- Memperbarui panel scanner, bingkai deteksi, status, dan kontrol responsif untuk tampilan ponsel maupun desktop.
 - Menata teks ringkasan performa agar ringan dan terbaca di panel scan.
 
 ### `tests/Feature/FaceAttendanceTest.php`

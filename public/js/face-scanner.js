@@ -9,6 +9,8 @@
     const cameraSourceToggle = document.querySelector('#faceCameraSourceToggle');
     const cameraStop = document.querySelector('#faceCameraStop');
     const placeholder = document.querySelector('#faceCameraPlaceholder');
+    const cameraState = document.querySelector('#faceCameraState');
+    const cameraStateText = document.querySelector('#faceCameraStateText');
     const status = document.querySelector('#faceScanStatus');
     const detectorMetrics = document.querySelector('#faceDetectorMetrics');
     const registrationFields = document.querySelector('#faceRegistrationFields');
@@ -81,6 +83,13 @@
         if (!status) return;
         status.textContent = message;
         status.classList.toggle('error-feedback', isError);
+    };
+
+    const setCameraState = (state, message) => {
+        if (!cameraState || !cameraStateText) return;
+        cameraState.classList.remove('is-off', 'is-loading', 'is-active', 'is-error');
+        cameraState.classList.add(`is-${state}`);
+        cameraStateText.textContent = message;
     };
 
     const canUseCamera = () => {
@@ -216,9 +225,11 @@
 
     const drawDetection = (detection) => {
         if (!detection) {
+            cameraViewport.classList.remove('has-face');
             clearOverlay();
             return;
         }
+        cameraViewport.classList.add('has-face');
         const { x, y, width, height } = detection.box || detection.detection.box;
         targetFaceBox = { x, y, width, height };
         if (!displayedFaceBox) {
@@ -440,7 +451,7 @@
                 descriptors: attendanceSamples,
                 ...(attendanceType === 'haid' ? { jenis: 'haid' } : {}),
             });
-            showResult(`${data.message} ${data.student.nama} · ${data.student.kelas} · ${data.waktu_scan}`);
+            showResult(`${data.message} ${data.student.nama} · ${data.student.kelas} · ${data.waktu_scan}${data.operator ? ` · Petugas: ${data.operator}` : ''}`);
         } catch (error) {
             showResult(error.message, true);
         } finally {
@@ -641,8 +652,10 @@
             stream.getTracks().forEach((track) => track.stop());
         }
         stream = null;
+        setCameraState('off', 'Kamera mati');
         video.srcObject = null;
         cameraViewport.classList.remove('is-front-camera');
+        cameraViewport.classList.remove('has-face');
         previewIsHorizontallyFlipped = false;
         detectorMetrics.hidden = true;
         inferenceSamples.splice(0, inferenceSamples.length);
@@ -666,8 +679,10 @@
             preferredFacing = requestedFacing;
             updateCameraSourceLabel();
             placeholder.hidden = false;
+            setCameraState('loading', 'Menghubungkan kamera');
             setStatus(`Meminta akses kamera ${preferredFacing === 'user' ? 'depan' : 'belakang'}…`);
             stream = await navigator.mediaDevices.getUserMedia(getCameraConstraints(requestedFacing));
+            setCameraState('loading', 'Menyiapkan pemindai');
             video.srcObject = stream;
             const actualFacing = stream.getVideoTracks()[0]?.getSettings().facingMode;
             previewIsHorizontallyFlipped = actualFacing
@@ -685,6 +700,7 @@
                 await detectFaces();
             }
             stableDetections = 0;
+            setCameraState('active', 'Kamera aktif');
             setStatus('Model siap. Posisikan satu wajah di dalam kotak.');
             result.hidden = true;
             scanLatched = false;
@@ -697,6 +713,7 @@
             }
             if (stream) stream.getTracks().forEach((track) => track.stop());
             stream = null;
+            setCameraState('error', 'Kamera bermasalah');
             video.srcObject = null;
             placeholder.hidden = false;
             if (cameraStop) cameraStop.disabled = true;
@@ -730,8 +747,10 @@
             cameraStop.disabled = true;
             placeholder.hidden = false;
             clearOverlay();
+            cameraViewport.classList.remove('has-face');
             result.hidden = true;
             scanLatched = false;
+            setCameraState('off', 'Kamera mati');
             setStatus('Kamera dimatikan.');
         });
     }
@@ -765,6 +784,7 @@
     });
 
     updateCameraSourceLabel();
+    setCameraState('off', 'Kamera mati');
     setMode(mode);
     setAttendanceType(attendanceType);
     window.setTimeout(() => {

@@ -37,6 +37,7 @@
                 <p id="qrStudentInduk"></p>
                 <p id="qrStudentClass"></p>
                 <p id="qrStudentScanDate"></p>
+                <p id="qrAttendanceOperator" class="qr-attendance-operator"></p>
                 <strong id="qrAttendanceMessage"></strong>
             </div>
         </div>

@@ -124,6 +124,20 @@ attendanceTableBody?.addEventListener('change', async (event) => {
         if (!response.ok) throw new Error('Attendance save failed');
         if (select.dataset.saveSequence === String(sequence)) select.dataset.status = statusToSave;
         if (sequence === latestSaveSequence) {
+            const data = await response.json();
+            const cell = select.closest('td');
+            let operator = cell.querySelector('.attendance-operator');
+            if (data.operator && statusToSave) {
+                if (!operator) {
+                    operator = document.createElement('small');
+                    operator.className = 'attendance-operator';
+                    cell.append(operator);
+                }
+                operator.textContent = `Oleh: ${data.operator}`;
+                operator.title = `Dicatat oleh ${data.operator}`;
+            } else if (operator) {
+                operator.remove();
+            }
             state.dataset.state = 'success';
             state.textContent = 'Perubahan berhasil tersimpan.';
         }

@@ -70,11 +70,27 @@
         <p id="faceAttendanceTypeHint" class="qr-scan-mode-hint">Mode Umum: catat kehadiran siswa.</p>
     @endif
 
+    <div class="face-scanner-header">
+        <div>
+            <p class="eyebrow">PEMINDAIAN WAJAH</p>
+            <p class="face-scanner-intro">Posisikan satu wajah di dalam bingkai dan ikuti petunjuk di layar.</p>
+        </div>
+        <div class="face-camera-state is-off" id="faceCameraState" role="status" aria-live="polite">
+            <span class="face-camera-state-dot" aria-hidden="true"></span>
+            <span id="faceCameraStateText">Kamera mati</span>
+        </div>
+    </div>
+
     <div class="face-camera-layout">
         <div class="face-camera-column">
             <div class="face-camera-viewport">
                 <video id="faceCameraVideo" autoplay muted playsinline aria-label="Kamera scan wajah"></video>
                 <canvas id="faceCameraOverlay" aria-hidden="true"></canvas>
+                <div class="face-camera-topline" aria-hidden="true">
+                    <span class="face-camera-live-dot"></span>
+                    <span>PREVIEW KAMERA</span>
+                    <span class="face-camera-topline-hint">Wajah diproses di perangkat</span>
+                </div>
                 <div class="face-detection-guide" aria-hidden="true"><span>Posisikan wajah di sini</span></div>
                 <div class="face-camera-placeholder" id="faceCameraPlaceholder">
                     <strong>{{ ($cameraAutoStart ?? false) ? 'Kamera akan dibuka otomatis' : 'Kamera belum aktif' }}</strong>
@@ -105,7 +121,7 @@
     </div>
 </section>
 @push('scripts')
-<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
 <script src="{{ asset('js/face-scanner.js') }}?v={{ md5_file(public_path('js/face-scanner.js')) }}" defer></script>
 @endpush
 @endsection

@@ -19,7 +19,7 @@ class AuthController extends Controller
         $credentials = $request->validate([
             'username' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string'],
-        ]);
+        ]) + ['approval_status' => 'approved'];
 
         if (! Auth::attempt($credentials)) {
             return back()->withErrors(['username' => 'Username atau password salah.'])->onlyInput('username');

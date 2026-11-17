@@ -7,6 +7,7 @@ use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\FaceAttendanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ReportController;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/staff/login', [AuthController::class, 'create'])->name('login');
 Route::post('/staff/login', [AuthController::class, 'store'])->middleware('throttle:5,1')->name('login.store');
+Route::get('/staff/register', [RegistrationController::class, 'create'])->name('staff.register');
+Route::post('/staff/register', [RegistrationController::class, 'store'])->middleware('throttle:5,1')->name('staff.register.store');
 Route::get('/login', [AuthController::class, 'create'])->name('login.legacy');
 Route::post('/login', [AuthController::class, 'store'])->middleware('throttle:5,1')->name('login.legacy.store');
 Route::get('/forgot-password', [PasswordResetController::class, 'requestForm'])->name('password.request');
@@ -111,6 +114,8 @@ Route::middleware('auth')->group(function () {
         Route::delete('/template_kartu', [StudentCardTemplateController::class, 'destroy'])->name('student-card-templates.destroy');
         Route::get('/data_user', [UserController::class, 'index'])->name('users.index');
         Route::post('/data_user', [UserController::class, 'store'])->name('users.store');
+        Route::post('/data_user/{user}/approve', [UserController::class, 'approve'])->name('users.approve');
+        Route::post('/data_user/{user}/reject', [UserController::class, 'reject'])->name('users.reject');
         Route::delete('/data_user/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::get('/import_siswa', [ImportController::class, 'create'])->name('students.import');
         Route::post('/import_siswa', [ImportController::class, 'store'])->middleware('throttle:5,1')->name('students.import.store');

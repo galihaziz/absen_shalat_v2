@@ -303,23 +303,41 @@ tbody tr:hover { background: #f7faf8; }
 .attendance-table select { width: 56px; min-width: 56px; max-width: 56px; min-height: 34px; padding: 4px; }
 .attendance-scan-time { display: block; padding-top: 3px; color: var(--muted); font-size: 11px; text-align: center; }
 .qr-scan-panel { max-width: 920px; }
-.face-scan-panel { max-width: 1080px; }
-.face-scan-modes { margin-bottom: 16px; }
-.face-camera-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 24px; }
-.face-camera-viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #294243; border-radius: 4px; background: #142725; }
+.face-scan-panel { max-width: 1120px; padding: clamp(18px, 3vw, 30px); border: 1px solid #dfe9e5; border-radius: 18px; box-shadow: 0 16px 42px #173a2b0d; }
+.face-scan-modes { margin-bottom: 16px; padding: 5px; gap: 6px; border: 1px solid #e1ebe6; border-radius: 12px; background: #f5f8f6; }
+.face-scan-modes .button { min-height: 42px; border-color: transparent; border-radius: 8px; background: transparent; }
+.face-scan-modes .button.primary { border-color: #cce5d8; background: white; box-shadow: 0 2px 6px #173a2b12; }
+.face-scanner-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 22px 0 14px; }
+.face-scanner-header .eyebrow { margin: 0 0 4px; color: var(--green-dark); letter-spacing: .12em; }
+.face-scanner-intro { margin: 0; color: var(--muted); font-size: 13px; }
+.face-camera-state { min-height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid #dfe7e3; border-radius: 999px; background: #f7f9f8; color: #53665e; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.face-camera-state-dot, .face-camera-live-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #9aa8a0; }
+.face-camera-state.is-loading .face-camera-state-dot { background: #d89628; animation: face-camera-pulse 1.2s ease-in-out infinite; }
+.face-camera-state.is-active { border-color: #b7dfc7; background: #effaf3; color: #17613c; }
+.face-camera-state.is-active .face-camera-state-dot { background: #1d9a58; box-shadow: 0 0 0 4px #1d9a5820; }
+.face-camera-state.is-error { border-color: #f0c9c4; background: #fff3f1; color: #9b3429; }
+.face-camera-state.is-error .face-camera-state-dot { background: #c74739; }
+.face-camera-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 24px; align-items: start; }
+.face-camera-viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #294243; border-radius: 16px; background: radial-gradient(ellipse at center, #1d3b34 0%, #10211e 72%); box-shadow: 0 12px 30px #10231d24; }
 .face-camera-viewport video, .face-camera-viewport canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; -webkit-transform: none; transform: none; filter: none; }
 .face-camera-viewport video { transform: matrix(1, 0, 0, 1, 0, 0) !important; -webkit-transform: matrix(1, 0, 0, 1, 0, 0) !important; }
 .face-camera-viewport.is-front-camera video, .face-camera-viewport.is-front-camera canvas { transform: scaleX(-1) !important; -webkit-transform: scaleX(-1) !important; }
 .face-camera-viewport canvas { pointer-events: none; }
-.face-detection-guide { position: absolute; z-index: 1; inset: 8% 26% 8%; display: grid; place-items: end center; border: 2px dashed #8fe1b4; border-radius: 48% 48% 38% 38% / 35% 35% 30% 30%; color: white; pointer-events: none; }
-.face-detection-guide span { margin-bottom: -25px; padding: 4px 8px; border-radius: 3px; background: #142725c9; font-size: 12px; }
+.face-camera-topline { position: absolute; z-index: 3; inset: 14px 14px auto; display: flex; align-items: center; gap: 8px; color: white; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-shadow: 0 1px 5px #0008; pointer-events: none; }
+.face-camera-live-dot { background: #75e0a4; box-shadow: 0 0 0 4px #75e0a426; }
+.face-camera-topline-hint { margin-left: auto; font-size: 10px; font-weight: 500; letter-spacing: 0; opacity: .8; }
+.face-detection-guide { position: absolute; z-index: 1; inset: 14% 27%; display: grid; place-items: end center; border: 2px dashed #a4e7c2b8; border-radius: 48% 48% 38% 38% / 35% 35% 30% 30%; color: white; pointer-events: none; transition: border-color 180ms ease, filter 180ms ease; }
+.face-camera-viewport.has-face .face-detection-guide { border-color: #62e5a1; border-style: solid; filter: drop-shadow(0 0 7px #62e5a180); }
+.face-detection-guide span { margin-bottom: -18px; padding: 6px 11px; border: 1px solid #ffffff30; border-radius: 999px; background: #10251fe8; color: white; font-size: 11px; font-weight: 600; }
 .face-camera-viewport canvas { z-index: 2; }
-.face-camera-placeholder { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 20px; color: white; text-align: center; }
+.face-camera-placeholder { position: absolute; z-index: 4; inset: 0; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 20px; background: #10211ed9; color: white; text-align: center; backdrop-filter: blur(8px); }
+.face-camera-placeholder strong { font-size: clamp(16px, 2vw, 20px); }
 .face-camera-placeholder[hidden], .face-registration-fields[hidden], .face-scan-result[hidden], .face-camera-feedback [hidden] { display: none; }
-.face-camera-placeholder span, .face-privacy-note { color: var(--muted); font-size: 13px; }
-.face-camera-actions { justify-content: center; margin-top: 14px; }
-.face-camera-feedback { min-width: 0; }
-.face-camera-feedback > p:nth-child(2) { min-height: 48px; color: var(--muted); }
+.face-camera-placeholder span { max-width: 340px; color: #d1dfd9; font-size: 13px; line-height: 1.55; }
+.face-camera-actions { justify-content: center; margin-top: 14px; gap: 9px; }
+.face-camera-actions .button { min-height: 42px; border-radius: 9px; }
+.face-camera-feedback { min-width: 0; padding: 20px; border: 1px solid #e3ebe7; border-radius: 14px; background: linear-gradient(160deg, #fbfdfc, #f5f9f6); }
+.face-camera-feedback > p:nth-child(2) { min-height: 48px; margin: 0 0 12px; color: #334b41; font-size: 15px; font-weight: 600; line-height: 1.5; }
 .face-detector-metrics { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .face-detector-metrics[hidden] { display: none; }
 .face-camera-feedback .error-feedback { color: #a5372c !important; }
@@ -335,8 +353,9 @@ tbody tr:hover { background: #f7faf8; }
 .face-registration-status span { font-size: 13px; }
 .face-registration-status.is-registered { border-color: #86c8a0; background: #effaf2; color: #14532d; }
 .face-registration-status.is-unregistered { border-color: #e5b86c; background: #fff8e8; color: #78350f; }
-.face-scan-result { margin: 14px 0; padding: 12px; border-left: 3px solid var(--green); background: #eef7f1; }
-.face-privacy-note { margin-top: 16px; }
+.face-scan-result { margin: 14px 0; padding: 13px 15px; border: 1px solid #cce6d5; border-left: 4px solid var(--green); border-radius: 9px; background: #eef8f1; color: #1d5135; font-weight: 600; line-height: 1.5; }
+.face-privacy-note { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e4ebe7; color: var(--muted); font-size: 12px; line-height: 1.55; }
+@keyframes face-camera-pulse { 50% { box-shadow: 0 0 0 5px #d8962828; } }
 .qr-scan-date { margin: 0 0 4px; color: var(--ink); font-weight: 700; }
 .qr-scan-cutoff { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
 .scan-cutoff-panel { border-left: 3px solid var(--green); }
@@ -495,6 +514,27 @@ tbody tr:hover { background: #f7faf8; }
 .login-wrap { min-height: 70vh; display: grid; place-items: center; }
 .login-form { width: min(420px, 100%); padding: 30px; }
 .login-form h1 { margin-bottom: 22px; }
+.login-form > .button { width: 100%; justify-content: center; margin-top: 10px; }
+.password-input-wrap { position: relative; display: block; width: 100%; }
+.password-input-wrap > input { padding-right: 48px; }
+.password-visibility-toggle { position: absolute; top: 50%; right: 4px; display: grid; width: 38px; height: 38px; place-items: center; padding: 0; transform: translateY(-50%); border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.password-visibility-toggle:hover { background: #edf4f0; color: var(--green-dark); }
+.password-visibility-toggle:focus-visible { outline: 3px solid #a3d6c2; outline-offset: 1px; }
+.password-visibility-icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.password-visibility-icon-show, .password-visibility-toggle[aria-pressed="true"] .password-visibility-icon-hide { display: none; }
+.password-visibility-toggle[aria-pressed="true"] .password-visibility-icon-show { display: block; }
+.registration-notice-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgb(16 34 31 / 55%); backdrop-filter: blur(4px); }
+.registration-notice-backdrop[hidden] { display: none; }
+.registration-notice { width: min(440px, 100%); padding: 30px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 24px 80px rgb(0 0 0 / 24%); text-align: center; }
+.registration-notice-icon { width: 54px; height: 54px; display: grid; place-items: center; margin: 0 auto 15px; border-radius: 50%; background: #e2f5eb; color: var(--green); font-size: 28px; font-weight: 700; }
+.registration-notice h2 { margin: 0 0 8px; }
+.registration-notice p { margin: 0 0 20px; color: var(--muted); line-height: 1.6; }
+.registration-notice .button { width: 100%; }
+.user-account-note { padding: 10px 12px; border-radius: 8px; background: #f2f7f4; color: #476254; font-size: 13px; }
+.user-approval-panel { margin-bottom: 18px; border-color: #e6d5aa; background: linear-gradient(140deg, #fffdf7, #fff); }
+.user-approval-count { min-width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #fff0c8; color: #765314; font-weight: 800; }
+.attendance-operator { display: block; max-width: 120px; overflow: hidden; color: #456b5c; font-size: 10px; text-overflow: ellipsis; }
+.qr-scan-result .qr-attendance-operator { margin: 4px 0 10px; color: var(--muted); font-size: 12px; }
 .attendance-table-wrap { max-height: min(72vh, 720px); overflow: auto; }
 .attendance-table-wrap thead th { position: sticky; top: 0; z-index: 8; }
 .attendance-table-wrap thead th.no { z-index: 12; }
@@ -507,6 +547,18 @@ tbody tr:hover { background: #f7faf8; }
     .content-grid { grid-template-columns: minmax(0, 1fr); }
     .qr-scan-layout { grid-template-columns: minmax(0, 1fr); }
     .face-camera-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+    .face-scan-panel { padding: 16px; border-radius: 14px; }
+    .face-scanner-header { align-items: flex-start; margin-top: 18px; }
+    .face-camera-state { min-height: 32px; padding: 6px 9px; font-size: 11px; }
+    .face-camera-topline { inset: 11px 11px auto; font-size: 9px; }
+    .face-camera-topline-hint { max-width: 42%; text-align: right; }
+    .face-detection-guide { inset-inline: 23%; }
+    .face-camera-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    .face-camera-actions #faceCameraToggle { grid-column: 1 / -1; }
+    .face-camera-actions .button { width: 100%; min-width: 0; padding-inline: 8px; font-size: 12px; }
+    .face-camera-feedback { padding: 16px; }
 }
 @media (max-width: 600px) {
     h1 { font-size: 26px; }

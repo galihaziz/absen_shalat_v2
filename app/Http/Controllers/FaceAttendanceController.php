@@ -87,7 +87,7 @@ class FaceAttendanceController extends Controller
             return response()->json(['success' => false, 'message' => 'Keterangan haid hanya berlaku untuk siswi.'], 422);
         }
 
-        return $this->attendanceResponse($student, $recorder, $status);
+        return $this->attendanceResponse($student, $recorder, $status, $request->user()->id);
     }
 
     public function registerAdmin(Request $request, Student $student): JsonResponse
@@ -262,9 +262,9 @@ class FaceAttendanceController extends Controller
         return 'Scan wajah hanya dibuka pukul '.$start.' sampai '.$end.'.';
     }
 
-    private function attendanceResponse(Student $student, AttendanceRecorder $recorder, string $status): JsonResponse
+    private function attendanceResponse(Student $student, AttendanceRecorder $recorder, string $status, ?int $recordedByUserId = null): JsonResponse
     {
-        $result = $recorder->record($student, $status);
+        $result = $recorder->record($student, $status, recordedByUserId: $recordedByUserId);
         $attendance = $result['attendance'];
         $alreadyRecorded = $result['already_recorded'];
         $label = $status === 'M' ? 'keterangan haid' : 'kehadiran';
@@ -284,6 +284,7 @@ class FaceAttendanceController extends Controller
             'tanggal' => $attendance->tanggal,
             'waktu_scan' => $attendance->waktu_scan?->format('H:i:s'),
             'keterangan' => $status,
+            'operator' => $attendance->recordedBy()->value('nama'),
         ]);
     }
 }

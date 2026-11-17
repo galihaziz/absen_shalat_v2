@@ -11,7 +11,7 @@ class Attendance extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['id_siswa', 'tanggal', 'status', 'waktu_scan'];
+    protected $fillable = ['id_siswa', 'tanggal', 'status', 'waktu_scan', 'recorded_by_user_id'];
 
     protected function casts(): array
     {
@@ -21,5 +21,10 @@ class Attendance extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class, 'id_siswa');
+    }
+
+    public function recordedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by_user_id');
     }
 }

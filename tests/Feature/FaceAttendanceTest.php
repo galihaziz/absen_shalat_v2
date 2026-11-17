@@ -25,7 +25,9 @@ class FaceAttendanceTest extends TestCase
             ->assertSee('Scan QR')
             ->assertSee('Scan Wajah')
             ->assertSee('face-detection-guide')
+            ->assertSee('faceCameraState')
             ->assertSee('faceDetectorMetrics')
+            ->assertSee('@vladmandic/face-api@1.7.15/dist/face-api.js')
             ->assertSee('Kamera belum aktif')
             ->assertSee('diam sampai hasil scan muncul')
             ->assertDontSee('faceStudentInduk');
@@ -214,12 +216,14 @@ class FaceAttendanceTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('student.induk', '10003')
-            ->assertJsonPath('keterangan', 'H');
+            ->assertJsonPath('keterangan', 'H')
+            ->assertJsonPath('operator', $admin->nama);
 
         $this->assertDatabaseHas('absensi', [
             'id_siswa' => $student->id,
             'tanggal' => now()->toDateString(),
             'status' => 'H',
+            'recorded_by_user_id' => $admin->id,
         ]);
     }
 
